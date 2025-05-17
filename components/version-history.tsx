@@ -16,10 +16,10 @@ export default function VersionHistory({ versions, currentVersion, onVersionChan
   }
 
   return (
-    <Card className="mb-4 border-app-green/20 dark:border-app-green/10">
+    <Card className="mb-4 border-todo-green/20 dark:border-todo-green/10">
       <CardContent className="p-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-app-green" />
+          <History className="h-4 w-4 text-todo-green" />
           <span className="text-sm">
             Version {currentVersion + 1} of {versions}
           </span>

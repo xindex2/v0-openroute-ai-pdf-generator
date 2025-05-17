@@ -62,7 +62,7 @@ export default function MissingFieldsForm({
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-app-green hover:bg-app-green/80 text-white"
+            className="w-full bg-gradient-green hover:opacity-90 text-white"
           >
             {isSubmitting ? (
               <>

@@ -25,17 +25,30 @@ const config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        sidebar: "#1A1E23",
-        "app-green": "#2ECC71",
-        "app-mint": "#F0F9EB",
-        "app-purple": "#A855F7",
+        sidebar: {
+          DEFAULT: "#1A1E23",
+          foreground: "#ffffff",
+          accent: "#2ECC71",
+        },
+        mint: {
+          DEFAULT: "#F0F9EB",
+          light: "#F8FCF5",
+        },
+        todo: {
+          green: {
+            DEFAULT: "#2ECC71",
+            light: "#4CD787",
+            dark: "#27AE60",
+          },
+          purple: "#A855F7",
+        },
         primary: {
           DEFAULT: "#2ECC71",
-          foreground: "hsl(var(--primary-foreground))",
+          foreground: "#ffffff",
         },
         secondary: {
           DEFAULT: "#A855F7",
-          foreground: "hsl(var(--secondary-foreground))",
+          foreground: "#ffffff",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
@@ -76,6 +89,9 @@ const config = {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+      },
+      backgroundImage: {
+        "gradient-green": "linear-gradient(to right, #2ECC71, #27AE60)",
       },
     },
   },

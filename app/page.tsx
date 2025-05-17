@@ -2,17 +2,17 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Suspense } from "react"
-import { FileText, MessageSquare, ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { FileText, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { generateDocument, streamDocument, updateDocument } from "@/lib/document-actions"
-import { generatePdfFromHtml } from "@/lib/pdf-generator"
 import ChatInterface from "@/components/chat-interface"
 import EditableDocumentPreview from "@/components/editable-document-preview"
 import DocumentActions from "@/components/document-actions"
 import VersionHistory from "@/components/version-history"
 import DocumentList, { type Document } from "@/components/document-list"
-import { exportAsDocx, exportAsImage } from "@/lib/export-utils"
+// Update imports to include the new export functions
+import { generatePdf, generateImage, generateHtml, generateTextDocument } from "@/lib/simplified-export"
 
 export default function Home() {
   // Document state
@@ -43,6 +43,7 @@ export default function Home() {
   const previewRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const finalContentRef = useRef<string>("")
+  const streamContainerRef = useRef<HTMLDivElement>(null)
 
   // Get current document content
   const currentDocumentVersions = activeDocumentId ? documentVersions[activeDocumentId] || [] : []
@@ -160,6 +161,11 @@ export default function Home() {
           (chunk) => {
             streamedContent += chunk
             finalContentRef.current = streamedContent
+
+            // Update the stream container in real-time
+            if (streamContainerRef.current) {
+              streamContainerRef.current.innerHTML = streamedContent
+            }
 
             // Update the current version in real-time
             if (activeDocumentId) {
@@ -384,8 +390,6 @@ export default function Home() {
   // Generate document for export
   const generateExportDocument = async () => {
     try {
-      setIsGenerating(true)
-
       // Create a container element with the current document content
       const contentElement = document.createElement("div")
 
@@ -465,71 +469,119 @@ export default function Home() {
     } catch (error) {
       console.error("Error preparing document for export:", error)
       throw error
-    } finally {
-      setIsGenerating(false)
     }
   }
 
-  // Generate PDF
-  const handleGeneratePdf = async () => {
+  // Replace the existing handleGenerateAndDownloadPdf function with this simplified version:
+  const handleGenerateAndDownloadPdf = async () => {
     try {
       setIsGenerating(true)
       setExportFormat("pdf")
 
       const contentElement = await generateExportDocument()
 
-      // Generate the PDF
-      const pdfBlob = await generatePdfFromHtml(contentElement)
+      // Generate the PDF using the simplified function
+      const pdfBlob = await generatePdf(contentElement)
+
+      // Download the PDF
       const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Store the URL for future use
       setPdfUrl(url)
     } catch (error) {
       console.error("Error generating PDF:", error)
-      alert("Failed to generate PDF: " + (error instanceof Error ? error.message : String(error)))
+      alert("Failed to generate PDF. Please try again.")
     } finally {
       setIsGenerating(false)
     }
   }
 
-  // Generate DOCX
-  const handleGenerateDocx = async () => {
-    try {
-      setIsGenerating(true)
-      setExportFormat("docx")
-
-      const contentElement = await generateExportDocument()
-
-      // Generate the DOCX
-      const docxBlob = await exportAsDocx(
-        contentElement,
-        documents.find((doc) => doc.id === activeDocumentId)?.title || "document",
-      )
-      const url = URL.createObjectURL(docxBlob)
-      setDocxUrl(url)
-    } catch (error) {
-      console.error("Error generating DOCX:", error)
-      alert("Failed to generate DOCX: " + (error instanceof Error ? error.message : String(error)))
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  // Generate Image
-  const handleGenerateImage = async () => {
+  // Replace the existing handleGenerateAndDownloadImage function with this simplified version:
+  const handleGenerateAndDownloadImage = async () => {
     try {
       setIsGenerating(true)
       setExportFormat("image")
 
       const contentElement = await generateExportDocument()
 
-      // Generate the Image
-      const imageBlob = await exportAsImage(contentElement)
+      // Generate the image using the simplified function
+      const imageBlob = await generateImage(contentElement)
+
+      // Download the image
       const url = URL.createObjectURL(imageBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Store the URL for future use
       setImageUrl(url)
     } catch (error) {
-      console.error("Error generating Image:", error)
-      alert("Failed to generate Image: " + (error instanceof Error ? error.message : String(error)))
+      console.error("Error generating image:", error)
+      alert("Failed to generate image. Please try again.")
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  // Replace the existing handleGenerateAndDownloadDocx function with this simplified version:
+  const handleGenerateAndDownloadDocx = async () => {
+    try {
+      setIsGenerating(true)
+      setExportFormat("docx")
+
+      const contentElement = await generateExportDocument()
+
+      // Generate a text document instead of DOCX
+      const textBlob = generateTextDocument(contentElement)
+
+      // Download the text file
+      const url = URL.createObjectURL(textBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.txt`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Store the URL for future use
+      setDocxUrl(url)
+    } catch (error) {
+      console.error("Error generating text document:", error)
+      alert("Failed to generate text document. Please try again.")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  // Replace the existing handleSaveHtml function with this simplified version:
+  const handleSaveHtml = () => {
+    try {
+      const contentElement = document.createElement("div")
+      contentElement.innerHTML = currentDocumentContent
+
+      // Generate HTML using the simplified function
+      const htmlBlob = generateHtml(contentElement)
+
+      // Download the HTML file
+      const url = URL.createObjectURL(htmlBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.html`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error("Error saving HTML:", error)
+      alert("Failed to save HTML. Please try again.")
     }
   }
 
@@ -541,15 +593,15 @@ export default function Home() {
     // Style headings
     styledContent = styledContent.replace(
       /<h1([^>]*)>(.*?)<\/h1>/gi,
-      '<h1$1 class="text-3xl font-bold mb-6 text-app-green">$2</h1>',
+      '<h1$1 class="text-3xl font-bold mb-6 text-todo-green-dark">$2</h1>',
     )
     styledContent = styledContent.replace(
       /<h2([^>]*)>(.*?)<\/h2>/gi,
-      '<h2$1 class="text-2xl font-bold mb-4 text-app-green">$2</h2>',
+      '<h2$1 class="text-2xl font-bold mb-4 text-todo-green-dark">$2</h2>',
     )
     styledContent = styledContent.replace(
       /<h3([^>]*)>(.*?)<\/h3>/gi,
-      '<h3$1 class="text-xl font-bold mb-3 text-app-green">$2</h3>',
+      '<h3$1 class="text-xl font-bold mb-3 text-todo-green-dark">$2</h3>',
     )
 
     // Style paragraphs
@@ -559,7 +611,7 @@ export default function Home() {
     styledContent = styledContent.replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse mb-6">')
     styledContent = styledContent.replace(
       /<th([^>]*)>(.*?)<\/th>/gi,
-      '<th$1 class="bg-app-green text-white p-3 text-left">$2</th>',
+      '<th$1 class="bg-todo-green text-white p-3 text-left">$2</th>',
     )
     styledContent = styledContent.replace(
       /<td([^>]*)>(.*?)<\/td>/gi,
@@ -569,7 +621,7 @@ export default function Home() {
     // Style links
     styledContent = styledContent.replace(
       /<a([^>]*)>(.*?)<\/a>/gi,
-      '<a$1 class="text-app-green hover:text-green-700 underline">$2</a>',
+      '<a$1 class="text-todo-green hover:text-todo-green-dark underline">$2</a>',
     )
 
     // Style lists
@@ -578,137 +630,13 @@ export default function Home() {
     styledContent = styledContent.replace(/<li([^>]*)>(.*?)<\/li>/gi, '<li$1 class="mb-1">$2</li>')
 
     // Add container styling
-    styledContent = `<div class="max-w-4xl mx-auto p-6 bg-app-mint">
+    styledContent = `<div class="max-w-4xl mx-auto p-6 bg-mint">
       <div class="bg-white p-6 rounded-lg shadow-sm">
         ${styledContent}
       </div>
     </div>`
 
     return styledContent
-  }
-
-  // Download PDF
-  const handleDownloadPdf = () => {
-    if (pdfUrl) {
-      try {
-        console.log("Downloading PDF from URL:", pdfUrl)
-
-        // Create a new anchor element
-        const link = document.createElement("a")
-        link.href = pdfUrl
-        link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.pdf`
-
-        // Append to the document, click, and remove
-        document.body.appendChild(link)
-        link.click()
-
-        // Small delay before removing the link
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link)
-          }
-        }, 100)
-      } catch (error) {
-        console.error("Error downloading PDF:", error)
-        alert("Failed to download PDF. Please try again.")
-      }
-    } else {
-      console.warn("No PDF URL available for download")
-      // Generate the PDF first if not available
-      handleGeneratePdf()
-    }
-  }
-
-  // Download DOCX
-  const handleDownloadDocx = () => {
-    if (docxUrl) {
-      try {
-        console.log("Downloading DOCX from URL:", docxUrl)
-
-        // Create a new anchor element
-        const link = document.createElement("a")
-        link.href = docxUrl
-        link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.docx`
-
-        // Append to the document, click, and remove
-        document.body.appendChild(link)
-        link.click()
-
-        // Small delay before removing the link
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link)
-          }
-        }, 100)
-      } catch (error) {
-        console.error("Error downloading DOCX:", error)
-        alert("Failed to download DOCX. Please try again.")
-      }
-    } else {
-      console.warn("No DOCX URL available for download")
-      // Generate the DOCX first if not available
-      handleGenerateDocx()
-    }
-  }
-
-  // Download Image
-  const handleDownloadImage = () => {
-    if (imageUrl) {
-      try {
-        console.log("Downloading Image from URL:", imageUrl)
-
-        // Create a new anchor element
-        const link = document.createElement("a")
-        link.href = imageUrl
-        link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.png`
-
-        // Append to the document, click, and remove
-        document.body.appendChild(link)
-        link.click()
-
-        // Small delay before removing the link
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link)
-          }
-        }, 100)
-      } catch (error) {
-        console.error("Error downloading Image:", error)
-        alert("Failed to download Image. Please try again.")
-      }
-    } else {
-      console.warn("No Image URL available for download")
-      // Generate the Image first if not available
-      handleGenerateImage()
-    }
-  }
-
-  // Handle download based on format
-  const handleDownload = () => {
-    switch (exportFormat) {
-      case "pdf":
-        handleDownloadPdf()
-        break
-      case "docx":
-        handleDownloadDocx()
-        break
-      case "image":
-        handleDownloadImage()
-        break
-    }
-  }
-
-  // Save HTML
-  const handleSaveHtml = () => {
-    // Create a blob and download it
-    const blob = new Blob([currentDocumentContent], { type: "text/html" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.html`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
   }
 
   // Extract missing fields from content
@@ -738,6 +666,7 @@ export default function Home() {
   return (
     <main className="h-screen flex flex-col">
       <div className="flex flex-1 overflow-hidden">
+        {/* Replace the sidebar section with: */}
         {/* Collapsible Sidebar */}
         <div
           className={`
@@ -747,66 +676,31 @@ export default function Home() {
           `}
         >
           {/* Sidebar Header */}
-          <div className="p-4 border-b bg-sidebar text-white flex items-center justify-between">
-            {sidebarOpen ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold text-app-green">AI PDF</span>
-                </div>
-                <Button variant="ghost" size="icon" onClick={toggleSidebar} className="text-white">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <Button variant="ghost" size="icon" onClick={toggleSidebar} className="text-white mx-auto">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            )}
+          <div className="p-4 border-b bg-sidebar flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-sidebar-accent" />
+              {sidebarOpen && <h1 className="text-xl font-bold text-sidebar-foreground">Document.st</h1>}
+            </div>
+            <Button variant="ghost" size="icon" onClick={toggleSidebar} className="text-sidebar-foreground">
+              {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
           </div>
 
           {/* Document List */}
-          {sidebarOpen ? (
-            <div className="flex-1 overflow-hidden">
-              <DocumentList
-                documents={documents}
-                activeDocumentId={activeDocumentId}
-                onSelectDocument={handleSelectDocument}
-                onCreateDocument={handleCreateDocument}
-                onDeleteDocument={handleDeleteDocument}
-                onRenameDocument={handleRenameDocument}
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center pt-4 gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCreateDocument}
-                title="New Document"
-                className="text-app-green hover:text-app-green/80"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              {documents.map((doc) => (
-                <Button
-                  key={doc.id}
-                  variant={activeDocumentId === doc.id ? "secondary" : "ghost"}
-                  size="icon"
-                  onClick={() => handleSelectDocument(doc.id)}
-                  title={doc.title}
-                  className={
-                    activeDocumentId === doc.id ? "bg-app-green text-white" : "text-white hover:text-app-green"
-                  }
-                >
-                  <FileText className="h-4 w-4" />
-                </Button>
-              ))}
-            </div>
-          )}
+          <div className="flex-1 overflow-hidden">
+            <DocumentList
+              documents={documents}
+              activeDocumentId={activeDocumentId}
+              onSelectDocument={handleSelectDocument}
+              onCreateDocument={handleCreateDocument}
+              onDeleteDocument={handleDeleteDocument}
+              onRenameDocument={handleRenameDocument}
+            />
+          </div>
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-app-mint">
+        <div className="flex-1 flex flex-col overflow-hidden bg-mint">
           <div className="border-b p-2 flex items-center justify-between bg-white">
             <div className="flex items-center">
               <div className="ml-2 text-sm font-medium truncate">
@@ -816,16 +710,20 @@ export default function Home() {
             <div>
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="bg-gray-100">
-                  <TabsTrigger value="chat" className="data-[state=active]:bg-app-green data-[state=active]:text-white">
+                  <TabsTrigger
+                    value="chat"
+                    className="data-[state=active]:bg-gradient-green data-[state=active]:text-white"
+                  >
                     <MessageSquare className="h-4 w-4 mr-2" />
                     Chat
                   </TabsTrigger>
+                  {/* Change "Document" tab to "Preview" tab */}
                   <TabsTrigger
                     value="document"
-                    className="data-[state=active]:bg-app-green data-[state=active]:text-white"
+                    className="data-[state=active]:bg-gradient-green data-[state=active]:text-white"
                   >
                     <FileText className="h-4 w-4 mr-2" />
-                    Document
+                    Preview
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -842,6 +740,7 @@ export default function Home() {
                     onUpdateDocument={handleUpdateDocument}
                     documentVersions={currentDocumentVersions.length}
                     currentVersion={currentVersionIndex}
+                    documentId={activeDocumentId}
                   />
                 </TabsContent>
 
@@ -863,13 +762,9 @@ export default function Home() {
                               fieldValues={fieldValues}
                               ref={previewRef}
                               onContentChange={handleContentUpdate}
-                              pdfUrl={pdfUrl}
-                              docxUrl={docxUrl}
-                              imageUrl={imageUrl}
-                              onGeneratePdf={handleGeneratePdf}
-                              onGenerateDocx={handleGenerateDocx}
-                              onGenerateImage={handleGenerateImage}
-                              onDownload={handleDownload}
+                              onGenerateAndDownloadPdf={handleGenerateAndDownloadPdf}
+                              onGenerateAndDownloadDocx={handleGenerateAndDownloadDocx}
+                              onGenerateAndDownloadImage={handleGenerateAndDownloadImage}
                               isGenerating={isGenerating}
                               exportFormat={exportFormat}
                               setExportFormat={setExportFormat}
@@ -898,12 +793,7 @@ export default function Home() {
                               Watch as your document is being created in real-time.
                             </p>
                           </div>
-                          {finalContentRef.current && (
-                            <div
-                              className="border p-4 rounded bg-white"
-                              dangerouslySetInnerHTML={{ __html: finalContentRef.current }}
-                            />
-                          )}
+                          <div ref={streamContainerRef} className="border p-4 rounded bg-white animate-pulse" />
                         </div>
                       )}
                     </div>
@@ -912,17 +802,11 @@ export default function Home() {
                     <div className="md:w-80 lg:w-96 border-t md:border-t-0 md:border-l overflow-auto bg-white">
                       <div className="h-full p-4">
                         <DocumentActions
-                          onGeneratePdf={handleGeneratePdf}
-                          onGenerateDocx={handleGenerateDocx}
-                          onGenerateImage={handleGenerateImage}
+                          onGenerateAndDownloadPdf={handleGenerateAndDownloadPdf}
+                          onGenerateAndDownloadDocx={handleGenerateAndDownloadDocx}
+                          onGenerateAndDownloadImage={handleGenerateAndDownloadImage}
                           onSaveHtml={handleSaveHtml}
-                          onDownloadPdf={handleDownloadPdf}
-                          onDownloadDocx={handleDownloadDocx}
-                          onDownloadImage={handleDownloadImage}
                           isGenerating={isGenerating}
-                          hasPdfUrl={!!pdfUrl}
-                          hasDocxUrl={!!docxUrl}
-                          hasImageUrl={!!imageUrl}
                           missingFields={missingFields}
                           fieldValues={fieldValues}
                           onFieldChange={handleFieldChange}

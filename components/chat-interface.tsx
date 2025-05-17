@@ -10,6 +10,35 @@ import { Avatar } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
 
+// Add a function to save messages to localStorage
+const saveMessagesToLocalStorage = (messages: Message[], documentId: string | null) => {
+  if (!documentId) return
+  try {
+    localStorage.setItem(`chat_history_${documentId}`, JSON.stringify(messages))
+  } catch (error) {
+    console.error("Error saving chat history to localStorage:", error)
+  }
+}
+
+// Add a function to load messages from localStorage
+const loadMessagesFromLocalStorage = (documentId: string | null): Message[] => {
+  if (!documentId) return []
+  try {
+    const savedMessages = localStorage.getItem(`chat_history_${documentId}`)
+    if (savedMessages) {
+      const parsedMessages = JSON.parse(savedMessages)
+      // Convert string dates back to Date objects
+      return parsedMessages.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp),
+      }))
+    }
+  } catch (error) {
+    console.error("Error loading chat history from localStorage:", error)
+  }
+  return []
+}
+
 interface Message {
   id: string
   role: "user" | "assistant"
@@ -17,33 +46,72 @@ interface Message {
   timestamp: Date
 }
 
+// Update the ChatInterface component to include documentId prop
 interface ChatInterfaceProps {
   onGenerateDocument: (prompt: string) => Promise<void>
   isGenerating: boolean
   onUpdateDocument: (instruction: string) => Promise<void>
   documentVersions: number
   currentVersion: number
+  documentId: string | null
 }
 
+// Update the function signature to include documentId
 export default function ChatInterface({
   onGenerateDocument,
   isGenerating,
   onUpdateDocument,
   documentVersions,
   currentVersion,
+  documentId,
 }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hello! I'm your AI document assistant. Describe the document you need, and I'll generate it for you. You can also ask me to update specific parts of the document after it's generated.",
-      timestamp: new Date(),
-    },
-  ])
+  // Load initial messages from localStorage based on documentId
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const savedMessages = loadMessagesFromLocalStorage(documentId)
+    if (savedMessages.length > 0) {
+      return savedMessages
+    }
+    return [
+      {
+        id: "welcome",
+        role: "assistant",
+        content:
+          "Hello! I'm your AI document assistant. Describe the document you need, and I'll generate it for you. You can also ask me to update specific parts of the document after it's generated.",
+        timestamp: new Date(),
+      },
+    ]
+  })
   const [input, setInput] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Add effect to save messages when they change or documentId changes
+  useEffect(() => {
+    if (documentId) {
+      saveMessagesToLocalStorage(messages, documentId)
+    }
+  }, [messages, documentId])
+
+  // Add effect to load messages when documentId changes
+  useEffect(() => {
+    if (documentId) {
+      const savedMessages = loadMessagesFromLocalStorage(documentId)
+      if (savedMessages.length > 0) {
+        setMessages(savedMessages)
+      } else {
+        // Reset to welcome message if no saved messages for this document
+        setMessages([
+          {
+            id: "welcome",
+            role: "assistant",
+            content:
+              "Hello! I'm your AI document assistant. Describe the document you need, and I'll generate it for you. You can also ask me to update specific parts of the document after it's generated.",
+            timestamp: new Date(),
+          },
+        ])
+      }
+    }
+  }, [documentId])
 
   useEffect(() => {
     scrollToBottom()
@@ -109,7 +177,7 @@ export default function ChatInterface({
   }
 
   return (
-    <div className="flex flex-col h-full bg-app-mint">
+    <div className="flex flex-col h-full bg-mint">
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="space-y-4 p-4">
@@ -117,11 +185,11 @@ export default function ChatInterface({
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`flex items-start gap-3 max-w-[80%]`}>
                   {message.role === "assistant" && (
-                    <Avatar className="h-8 w-8 bg-sidebar text-app-green">
+                    <Avatar className="h-8 w-8 bg-sidebar text-todo-green">
                       <Sparkles className="h-4 w-4" />
                     </Avatar>
                   )}
-                  <Card className={`p-3 ${message.role === "user" ? "bg-app-green text-white" : "bg-white"}`}>
+                  <Card className={`p-3 ${message.role === "user" ? "bg-gradient-green text-white" : "bg-white"}`}>
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     <div
                       className={`text-xs ${message.role === "user" ? "text-white/70" : "text-muted-foreground"} mt-1`}
@@ -165,7 +233,7 @@ export default function ChatInterface({
           <Button
             type="submit"
             disabled={isSubmitting || isGenerating}
-            className="self-end bg-app-green hover:bg-app-green/80 text-white"
+            className="self-end bg-gradient-green hover:opacity-90 text-white"
           >
             {isSubmitting || isGenerating ? (
               <>

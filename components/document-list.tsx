@@ -53,34 +53,34 @@ export default function DocumentList({
   return (
     <div className="flex flex-col h-full">
       {/* Logo and App Title */}
-      <div className="p-4 border-b bg-sidebar text-white">
+      <div className="p-4 border-b bg-sidebar">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-app-green" />
-          <h1 className="text-xl font-bold text-white">AI PDF Generator</h1>
+          <Sparkles className="h-5 w-5 text-sidebar-accent" />
+          <h1 className="text-xl font-bold text-sidebar-foreground">AI PDF Generator</h1>
         </div>
-        <p className="text-app-green/80 text-sm mt-1">Create documents with AI</p>
+        <p className="text-sidebar-accent text-sm mt-1">Create documents with AI</p>
       </div>
 
-      <div className="p-4 border-b">
-        <Button onClick={onCreateDocument} className="w-full bg-app-green hover:bg-app-green/80 text-white">
+      <div className="p-4 border-b bg-sidebar">
+        <Button onClick={onCreateDocument} className="w-full bg-gradient-green hover:opacity-90 text-white">
           <Plus className="mr-2 h-4 w-4" />
           New Document
         </Button>
       </div>
 
-      <div className="p-4 border-b">
+      <div className="p-4 border-b bg-sidebar">
         <div className="relative">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search documents..."
-            className="pl-8"
+            className="pl-8 bg-sidebar border-sidebar-accent/30 text-sidebar-foreground"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 bg-sidebar">
         <div className="p-4 space-y-2">
           {filteredDocuments.length > 0 ? (
             filteredDocuments.map((doc) => (
@@ -88,13 +88,13 @@ export default function DocumentList({
                 key={doc.id}
                 className={`p-3 rounded-md flex items-center justify-between cursor-pointer ${
                   activeDocumentId === doc.id
-                    ? "bg-app-green/20 dark:bg-app-green/10 border-l-4 border-app-green"
-                    : "hover:bg-muted"
+                    ? "bg-sidebar-accent/20 border-l-4 border-sidebar-accent"
+                    : "hover:bg-sidebar/80"
                 }`}
                 onClick={() => onSelectDocument(doc.id)}
               >
                 <div className="flex items-center overflow-hidden">
-                  <FileText className="h-4 w-4 mr-2 flex-shrink-0 text-app-green" />
+                  <FileText className="h-4 w-4 mr-2 flex-shrink-0 text-sidebar-accent" />
                   {renamingId === doc.id ? (
                     <Input
                       value={newTitle}
@@ -104,18 +104,22 @@ export default function DocumentList({
                         if (e.key === "Enter") handleFinishRename(doc.id)
                         if (e.key === "Escape") setRenamingId(null)
                       }}
-                      className="h-7 py-1 px-2"
+                      className="h-7 py-1 px-2 bg-sidebar border-sidebar-accent/30 text-sidebar-foreground"
                       autoFocus
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <div className="truncate">{doc.title}</div>
+                    <div className="truncate text-sidebar-foreground">{doc.title}</div>
                   )}
                 </div>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-sidebar-foreground hover:text-sidebar-accent"
+                    >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -142,7 +146,7 @@ export default function DocumentList({
               </div>
             ))
           ) : (
-            <div className="text-center py-4 text-muted-foreground">
+            <div className="text-center py-4 text-sidebar-foreground/70">
               {searchQuery ? "No documents found" : "No documents yet"}
             </div>
           )}
