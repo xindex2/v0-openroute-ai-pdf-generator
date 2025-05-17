@@ -6,7 +6,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Edit, Save, X, Download, FileText, FileImage, FileIcon as FileWord } from "lucide-react"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface EditableDocumentPreviewProps {
   content: string
@@ -142,8 +141,8 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
 
     return (
       <Card className="h-full overflow-hidden flex flex-col bg-white">
-        <div className="p-2 border-b flex justify-between gap-2 bg-white">
-          <div className="flex gap-2">
+        <div className="p-2 border-b flex flex-wrap justify-between gap-2 bg-white">
+          <div className="flex gap-2 mb-1 sm:mb-0">
             {isEditing ? (
               <>
                 <Button size="sm" variant="outline" onClick={handleCancelEdit}>
@@ -169,17 +168,18 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <ToggleGroup
               type="single"
               value={exportFormat}
               onValueChange={(value) => value && setExportFormat(value as "pdf" | "docx" | "image")}
+              className="w-full sm:w-auto"
             >
               <ToggleGroupItem
                 value="pdf"
                 aria-label="PDF"
                 title="PDF"
-                className="data-[state=on]:bg-gradient-green data-[state=on]:text-white"
+                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
               >
                 <FileText className="h-4 w-4" />
               </ToggleGroupItem>
@@ -187,7 +187,7 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
                 value="docx"
                 aria-label="DOCX"
                 title="DOCX"
-                className="data-[state=on]:bg-gradient-green data-[state=on]:text-white"
+                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
               >
                 <FileWord className="h-4 w-4" />
               </ToggleGroupItem>
@@ -195,58 +195,26 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
                 value="image"
                 aria-label="Image"
                 title="Image"
-                className="data-[state=on]:bg-gradient-green data-[state=on]:text-white"
+                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
               >
                 <FileImage className="h-4 w-4" />
               </ToggleGroupItem>
             </ToggleGroup>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  disabled={isGenerating || !content}
-                  className="bg-gradient-green hover:opacity-90 text-white"
-                >
-                  {isGenerating ? (
-                    "Generating..."
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" /> Download
-                    </>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    setExportFormat("pdf")
-                    onGenerateAndDownloadPdf()
-                  }}
-                  disabled={isGenerating || !content}
-                >
-                  <FileText className="mr-2 h-4 w-4" /> Download as PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setExportFormat("docx")
-                    onGenerateAndDownloadDocx()
-                  }}
-                  disabled={isGenerating || !content}
-                >
-                  <FileWord className="mr-2 h-4 w-4" /> Download as Text
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setExportFormat("image")
-                    onGenerateAndDownloadImage()
-                  }}
-                  disabled={isGenerating || !content}
-                >
-                  <FileImage className="mr-2 h-4 w-4" /> Download as Image
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              size="sm"
+              disabled={isGenerating || !content}
+              className="bg-gradient-green hover:opacity-90 text-white w-full sm:w-auto"
+              onClick={handleGenerateAndDownload}
+            >
+              {isGenerating ? (
+                "Generating..."
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" /> Download
+                </>
+              )}
+            </Button>
           </div>
         </div>
         <ScrollArea className="flex-1">

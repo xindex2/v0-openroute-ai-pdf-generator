@@ -193,7 +193,7 @@ export async function streamDocument(prompt: string, onChunk: (chunk: string) =>
       
       Identify any fields that would need to be filled in by the user and mark them with square brackets like [Field Name].
       
-      Return ONLY the HTML content without any explanations or markdown.
+      Return ONLY the HTML content without any explanations, markdown, or code blocks.
     `
 
     const OPENROUTER_API_KEY = process.env.OPENROUTE_API_KEY
@@ -211,7 +211,7 @@ export async function streamDocument(prompt: string, onChunk: (chunk: string) =>
       headers: {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         "HTTP-Referer": "https://vercel.com",
-        "X-Title": "AI PDF Generator",
+        "X-Title": "docfa.st",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -220,7 +220,7 @@ export async function streamDocument(prompt: string, onChunk: (chunk: string) =>
           {
             role: "system",
             content:
-              "You are a professional document generator. Create well-formatted HTML documents with appropriate structure and placeholders for missing information. Apply rich styling directly in the HTML with attractive colors for headings, backgrounds, and sections. Use color psychology to make documents visually appealing and professional. Include background colors, borders, and other visual elements to create a polished look.",
+              "You are a professional document generator. Create well-formatted HTML documents with appropriate structure and placeholders for missing information. Apply rich styling directly in the HTML with attractive colors for headings, backgrounds, and sections. Use color psychology to make documents visually appealing and professional. Include background colors, borders, and other visual elements to create a polished look. DO NOT include markdown code blocks or ```html tags in your response.",
           },
           {
             role: "user",
@@ -275,7 +275,10 @@ export async function streamDocument(prompt: string, onChunk: (chunk: string) =>
             const content = parsed.choices[0]?.delta?.content || ""
 
             if (content) {
-              onChunk(content)
+              // Clean up any markdown code block markers
+              const cleanedContent = content.replace(/```html/g, "").replace(/```/g, "")
+
+              onChunk(cleanedContent)
             }
           } catch (e) {
             console.error("Error parsing JSON:", e)

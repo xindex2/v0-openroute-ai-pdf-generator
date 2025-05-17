@@ -3,12 +3,13 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Loader2, Send, Sparkles } from "lucide-react"
+import { Loader2, Send, Sparkles, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // Add a function to save messages to localStorage
 const saveMessagesToLocalStorage = (messages: Message[], documentId: string | null) => {
@@ -54,6 +55,9 @@ interface ChatInterfaceProps {
   documentVersions: number
   currentVersion: number
   documentId: string | null
+  urlPrompt?: string | null
+  hasProcessedUrlPrompt?: boolean
+  setHasProcessedUrlPrompt?: (value: boolean) => void
 }
 
 // Update the function signature to include documentId
@@ -64,6 +68,9 @@ export default function ChatInterface({
   documentVersions,
   currentVersion,
   documentId,
+  urlPrompt,
+  hasProcessedUrlPrompt,
+  setHasProcessedUrlPrompt,
 }: ChatInterfaceProps) {
   // Load initial messages from localStorage based on documentId
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -84,6 +91,49 @@ export default function ChatInterface({
   const [input, setInput] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Add these state variables and refs
+  const [isTyping, setIsTyping] = useState(false)
+  const typingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const typingIndexRef = useRef(0)
+
+  // Add this effect to handle URL prompt typing animation
+  useEffect(() => {
+    if (urlPrompt && !hasProcessedUrlPrompt && setHasProcessedUrlPrompt) {
+      // Start typing animation
+      setIsTyping(true)
+      typingIndexRef.current = 0
+
+      const typePrompt = () => {
+        if (typingIndexRef.current <= urlPrompt.length) {
+          setInput(urlPrompt.substring(0, typingIndexRef.current))
+          typingIndexRef.current += 1
+
+          // Continue typing
+          typingIntervalRef.current = setTimeout(typePrompt, 50)
+        } else {
+          // Finished typing
+          setIsTyping(false)
+          setHasProcessedUrlPrompt(true)
+
+          // Auto-submit after a short delay if configured
+          // Uncomment this if you want auto-submission
+          // setTimeout(() => {
+          //   handleSubmit(new Event('submit') as React.FormEvent)
+          // }, 1000)
+        }
+      }
+
+      // Start the typing animation
+      typingIntervalRef.current = setTimeout(typePrompt, 500)
+
+      return () => {
+        if (typingIntervalRef.current) {
+          clearTimeout(typingIntervalRef.current)
+        }
+      }
+    }
+  }, [urlPrompt, hasProcessedUrlPrompt, setHasProcessedUrlPrompt])
 
   // Add effect to save messages when they change or documentId changes
   useEffect(() => {
@@ -119,6 +169,27 @@ export default function ChatInterface({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  const handleShare = () => {
+    if (!input.trim()) return
+
+    // Create a URL-friendly version of the prompt
+    const urlPrompt = encodeURIComponent(input.trim())
+
+    // Create the shareable URL
+    const shareUrl = `${window.location.origin}/?prompt=${urlPrompt}`
+
+    // Copy to clipboard
+    navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => {
+        // Show a toast or alert
+        alert("Shareable link copied to clipboard!")
+      })
+      .catch((err) => {
+        console.error("Failed to copy URL: ", err)
+      })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -230,23 +301,49 @@ export default function ChatInterface({
               }
             }}
           />
-          <Button
-            type="submit"
-            disabled={isSubmitting || isGenerating}
-            className="self-end bg-gradient-green hover:opacity-90 text-white"
-          >
-            {isSubmitting || isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isGenerating ? "Generating..." : "Sending..."}
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-4 w-4" />
-                {documentVersions > 0 ? "Update Document" : "Generate Document"}
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleShare}
+                    disabled={!input.trim() || isSubmitting || isGenerating || isTyping}
+                    className="bg-white"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Share this prompt</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <Button
+              type="submit"
+              disabled={isSubmitting || isGenerating || isTyping}
+              className="bg-gradient-green hover:opacity-90 text-white"
+            >
+              {isSubmitting || isGenerating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {isGenerating ? "Generating..." : "Sending..."}
+                </>
+              ) : isTyping ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Typing...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  {documentVersions > 0 ? "Update Document" : "Generate Document"}
+                </>
+              )}
+            </Button>
+          </div>
         </form>
       </div>
     </div>

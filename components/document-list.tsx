@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, FileText, Search, MoreVertical, Sparkles } from "lucide-react"
+import { Plus, FileText, Search, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -55,14 +55,7 @@ export default function DocumentList({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo and App Title */}
-      <div className="p-4 border-b bg-sidebar">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-sidebar-accent" />
-          {!collapsed && <h1 className="text-xl font-bold text-sidebar-foreground">docfa.st</h1>}
-        </div>
-        {!collapsed && <p className="text-sidebar-accent text-sm mt-1">Create documents with AI</p>}
-      </div>
+      {/* New Document Button */}
 
       <div className="p-4 border-b bg-sidebar">
         <Button
@@ -94,7 +87,7 @@ export default function DocumentList({
             filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
-                className={`p-3 rounded-md flex items-center justify-between cursor-pointer ${
+                className={`p-2 rounded-md flex items-center justify-between cursor-pointer ${
                   activeDocumentId === doc.id
                     ? "bg-sidebar-accent/20 border-l-4 border-sidebar-accent"
                     : "hover:bg-sidebar/80"
@@ -102,7 +95,7 @@ export default function DocumentList({
                 onClick={() => onSelectDocument(doc.id)}
               >
                 <div className="flex items-center overflow-hidden">
-                  <FileText className="h-4 w-4 mr-2 flex-shrink-0 text-sidebar-accent" />
+                  <FileText className="h-4 w-4 mr-1 flex-shrink-0 text-sidebar-accent" />
                   {renamingId === doc.id ? (
                     <Input
                       value={newTitle}
@@ -117,11 +110,11 @@ export default function DocumentList({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <div className="truncate text-sidebar-foreground">
+                    <div className="truncate text-sidebar-foreground max-w-[120px]">
                       {collapsed
                         ? doc.title.charAt(0)
-                        : doc.title.length > 20
-                          ? `${doc.title.substring(0, 20)}...`
+                        : doc.title.length > 18
+                          ? `${doc.title.substring(0, 18)}...`
                           : doc.title}
                     </div>
                   )}
@@ -133,9 +126,9 @@ export default function DocumentList({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 text-sidebar-foreground hover:text-sidebar-accent"
+                        className="h-6 w-6 p-0 text-sidebar-foreground hover:text-sidebar-accent"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="h-3 w-3" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

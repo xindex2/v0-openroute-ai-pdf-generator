@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
 import { Suspense } from "react"
-import { FileText, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
+import { FileText, MessageSquare, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { generateDocument, streamDocument, updateDocument } from "@/lib/document-actions"
@@ -156,6 +157,8 @@ export default function Home() {
       let streamedContent = ""
 
       try {
+        setIsStreaming(true)
+
         await streamDocument(
           prompt,
           (chunk) => {
@@ -679,6 +682,25 @@ export default function Home() {
     setSidebarOpen(!sidebarOpen)
   }
 
+  // Handle URL parameters for prompts
+  const searchParams = useSearchParams()
+  const urlPrompt = searchParams.get("prompt")
+  const [hasProcessedUrlPrompt, setHasProcessedUrlPrompt] = useState(false)
+
+  // Effect to handle URL prompt parameter
+  useEffect(() => {
+    if (urlPrompt && !hasProcessedUrlPrompt) {
+      // Create a new document if none exists
+      if (!activeDocumentId) {
+        handleCreateDocument()
+      }
+
+      // Set the prompt in the chat interface
+      // We'll implement this in the ChatInterface component
+      setHasProcessedUrlPrompt(true)
+    }
+  }, [urlPrompt, hasProcessedUrlPrompt, activeDocumentId])
+
   return (
     <main className="h-screen flex flex-col">
       <div className="flex flex-1 overflow-hidden">
@@ -690,6 +712,27 @@ export default function Home() {
             flex flex-col
           `}
         >
+          {/* Logo, title and toggle button at the top of sidebar */}
+          <div className="p-4 flex items-center justify-between border-b bg-sidebar">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <Sparkles className="h-5 w-5 text-sidebar-accent flex-shrink-0" />
+              {sidebarOpen && (
+                <div className="overflow-hidden">
+                  <h1 className="text-xl font-bold text-sidebar-foreground truncate">docfa.st</h1>
+                  <p className="text-sidebar-accent text-xs">Create documents with AI</p>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="text-sidebar-foreground ml-2 flex-shrink-0"
+            >
+              {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          </div>
+
           {/* Document List with collapsed state */}
           <DocumentList
             documents={documents}
@@ -704,18 +747,10 @@ export default function Home() {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white">
-          <div className="border-b p-2 flex items-center justify-between bg-white">
-            <div className="flex items-center">
-              <Button variant="ghost" size="icon" onClick={toggleSidebar} className="mr-2">
-                {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              </Button>
-              <div className="ml-2 text-sm font-medium truncate max-w-[200px] md:max-w-[400px]">
-                {documents.find((doc) => doc.id === activeDocumentId)?.title || "No document selected"}
-              </div>
-            </div>
-            <div>
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="bg-gray-100">
+          <div className="border-b p-2 flex flex-wrap items-center justify-between bg-white">
+            <div className="flex items-center gap-2 order-1 md:order-1 w-full md:w-auto mb-2 md:mb-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
+                <TabsList className="w-full md:w-auto grid grid-cols-2">
                   <TabsTrigger
                     value="chat"
                     className="data-[state=active]:bg-gradient-green data-[state=active]:text-white"
@@ -723,7 +758,6 @@ export default function Home() {
                     <MessageSquare className="h-4 w-4 mr-2" />
                     Chat
                   </TabsTrigger>
-                  {/* Change "Document" tab to "Preview" tab */}
                   <TabsTrigger
                     value="document"
                     className="data-[state=active]:bg-gradient-green data-[state=active]:text-white"
@@ -734,10 +768,16 @@ export default function Home() {
                 </TabsList>
               </Tabs>
             </div>
+
+            <div className="order-2 md:order-2 w-full md:w-auto">
+              <div className="text-sm font-medium truncate max-w-full md:max-w-[400px]">
+                {documents.find((doc) => doc.id === activeDocumentId)?.title || "No document selected"}
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <Suspense fallback={<div>Loading...</div>}>
+            <Suspense fallback={<div className="p-4 text-center">Loading...</div>}>
               <Tabs value={activeTab} className="h-full flex flex-col">
                 <TabsContent value="chat" className="flex-1 overflow-hidden mt-0">
                   <ChatInterface
@@ -747,13 +787,16 @@ export default function Home() {
                     documentVersions={currentDocumentVersions.length}
                     currentVersion={currentVersionIndex}
                     documentId={activeDocumentId}
+                    urlPrompt={urlPrompt}
+                    hasProcessedUrlPrompt={hasProcessedUrlPrompt}
+                    setHasProcessedUrlPrompt={setHasProcessedUrlPrompt}
                   />
                 </TabsContent>
 
                 <TabsContent value="document" className="flex-1 overflow-hidden mt-0">
-                  <div className="h-full flex flex-col md:flex-row">
-                    {/* Document Preview */}
-                    <div className="flex-1 h-full md:h-auto overflow-hidden flex flex-col">
+                  <div className="h-full flex flex-col lg:flex-row">
+                    {/* Document Preview - make it stack on mobile */}
+                    <div className="flex-1 h-[50vh] lg:h-auto overflow-hidden flex flex-col">
                       {currentDocumentVersions.length > 0 && (
                         <>
                           <VersionHistory
@@ -799,13 +842,13 @@ export default function Home() {
                               Watch as your document is being created in real-time.
                             </p>
                           </div>
-                          <div ref={streamContainerRef} className="border p-4 rounded bg-white animate-pulse" />
+                          <div ref={streamContainerRef} className="border p-4 rounded bg-white" />
                         </div>
                       )}
                     </div>
 
-                    {/* Document Customization */}
-                    <div className="md:w-80 lg:w-96 border-t md:border-t-0 md:border-l overflow-auto bg-white">
+                    {/* Document Customization - make it stack on mobile */}
+                    <div className="lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l overflow-auto bg-white h-[50vh] lg:h-auto">
                       <div className="h-full p-4">
                         <DocumentActions
                           onGenerateAndDownloadPdf={handleGenerateAndDownloadPdf}

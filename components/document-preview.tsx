@@ -20,6 +20,10 @@ const DocumentPreview = forwardRef<HTMLDivElement, DocumentPreviewProps>(({ cont
       try {
         let processedContent = content
 
+        // Remove any markdown code block markers
+        processedContent = processedContent.replace(/```html/g, "")
+        processedContent = processedContent.replace(/```/g, "")
+
         // Replace placeholders with values or highlight missing fields
         Object.entries(fieldValues).forEach(([field, value]) => {
           if (value) {
