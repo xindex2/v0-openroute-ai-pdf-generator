@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import ColorPicker from "@/components/color-picker"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useEffect } from "react"
 
 interface ThemeCustomizerProps {
   theme: {
@@ -24,6 +25,36 @@ export default function ThemeCustomizer({ theme, onChange }: ThemeCustomizerProp
       [key]: value,
     })
   }
+
+  // Apply theme to preview in real-time
+  useEffect(() => {
+    const previewElement = document.querySelector(".document-preview") as HTMLElement
+    if (previewElement) {
+      // Apply theme styles directly to the preview element
+      previewElement.style.fontFamily = theme.fontFamily
+      previewElement.style.color = theme.textColor
+      previewElement.style.backgroundColor = theme.backgroundColor
+
+      // Apply styles to headings
+      const headings = previewElement.querySelectorAll("h1, h2, h3, h4, h5, h6")
+      headings.forEach((heading) => {
+        ;(heading as HTMLElement).style.color = theme.primaryColor
+      })
+
+      // Apply styles to links
+      const links = previewElement.querySelectorAll("a")
+      links.forEach((link) => {
+        ;(link as HTMLElement).style.color = theme.accentColor
+      })
+
+      // Apply styles to tables
+      const tableHeaders = previewElement.querySelectorAll("th")
+      tableHeaders.forEach((th) => {
+        ;(th as HTMLElement).style.backgroundColor = theme.secondaryColor
+        ;(th as HTMLElement).style.color = "#ffffff"
+      })
+    }
+  }, [theme])
 
   return (
     <Card>

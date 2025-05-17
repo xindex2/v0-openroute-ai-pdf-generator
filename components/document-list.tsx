@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import UserProfile from "@/components/user-profile"
 
 export interface Document {
   id: string
@@ -21,6 +22,7 @@ interface DocumentListProps {
   onCreateDocument: () => void
   onDeleteDocument: (documentId: string) => void
   onRenameDocument: (documentId: string, newTitle: string) => void
+  collapsed?: boolean
 }
 
 export default function DocumentList({
@@ -30,6 +32,7 @@ export default function DocumentList({
   onCreateDocument,
   onDeleteDocument,
   onRenameDocument,
+  collapsed = false,
 }: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -56,29 +59,34 @@ export default function DocumentList({
       <div className="p-4 border-b bg-sidebar">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-sidebar-accent" />
-          <h1 className="text-xl font-bold text-sidebar-foreground">AI PDF Generator</h1>
+          {!collapsed && <h1 className="text-xl font-bold text-sidebar-foreground">docfa.st</h1>}
         </div>
-        <p className="text-sidebar-accent text-sm mt-1">Create documents with AI</p>
+        {!collapsed && <p className="text-sidebar-accent text-sm mt-1">Create documents with AI</p>}
       </div>
 
       <div className="p-4 border-b bg-sidebar">
-        <Button onClick={onCreateDocument} className="w-full bg-gradient-green hover:opacity-90 text-white">
-          <Plus className="mr-2 h-4 w-4" />
-          New Document
+        <Button
+          onClick={onCreateDocument}
+          className={`${collapsed ? "w-8 p-0" : "w-full"} bg-gradient-green hover:opacity-90 text-white`}
+        >
+          <Plus className={`${collapsed ? "" : "mr-2"} h-4 w-4`} />
+          {!collapsed && "New Document"}
         </Button>
       </div>
 
-      <div className="p-4 border-b bg-sidebar">
-        <div className="relative">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search documents..."
-            className="pl-8 bg-sidebar border-sidebar-accent/30 text-sidebar-foreground"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      {!collapsed && (
+        <div className="p-4 border-b bg-sidebar">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search documents..."
+              className="pl-8 bg-sidebar border-sidebar-accent/30 text-sidebar-foreground"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <ScrollArea className="flex-1 bg-sidebar">
         <div className="p-4 space-y-2">
@@ -109,40 +117,48 @@ export default function DocumentList({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <div className="truncate text-sidebar-foreground">{doc.title}</div>
+                    <div className="truncate text-sidebar-foreground">
+                      {collapsed
+                        ? doc.title.charAt(0)
+                        : doc.title.length > 20
+                          ? `${doc.title.substring(0, 20)}...`
+                          : doc.title}
+                    </div>
                   )}
                 </div>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-sidebar-foreground hover:text-sidebar-accent"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleStartRename(doc)
-                      }}
-                    >
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-red-600 focus:text-red-600"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDeleteDocument(doc.id)
-                      }}
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {!collapsed && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-sidebar-foreground hover:text-sidebar-accent"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleStartRename(doc)
+                        }}
+                      >
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-red-600 focus:text-red-600"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeleteDocument(doc.id)
+                        }}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             ))
           ) : (
@@ -152,6 +168,9 @@ export default function DocumentList({
           )}
         </div>
       </ScrollArea>
+
+      {/* User Profile */}
+      <UserProfile collapsed={collapsed} />
     </div>
   )
 }

@@ -12,7 +12,7 @@ import DocumentActions from "@/components/document-actions"
 import VersionHistory from "@/components/version-history"
 import DocumentList, { type Document } from "@/components/document-list"
 // Update imports to include the new export functions
-import { generatePdf, generateImage, generateHtml, generateTextDocument } from "@/lib/simplified-export"
+import { generatePdf, generateImage, generateHtml, generateTextDocument, printDocument } from "@/lib/simplified-export"
 
 export default function Home() {
   // Document state
@@ -31,7 +31,7 @@ export default function Home() {
     primaryColor: "#2ECC71", // Green
     secondaryColor: "#A855F7", // Purple
     accentColor: "#2ECC71", // Green
-    backgroundColor: "#F0F9EB", // Light mint
+    backgroundColor: "#ffffff", // White (changed from mint to reduce green space)
     textColor: "#1A1E23", // Dark
     fontFamily: "Inter, sans-serif",
   })
@@ -159,7 +159,12 @@ export default function Home() {
         await streamDocument(
           prompt,
           (chunk) => {
-            streamedContent += chunk
+            // Clean up any markdown tags in the chunk
+            let cleanedChunk = chunk
+            cleanedChunk = cleanedChunk.replace(/```html/g, "")
+            cleanedChunk = cleanedChunk.replace(/```/g, "")
+
+            streamedContent += cleanedChunk
             finalContentRef.current = streamedContent
 
             // Update the stream container in real-time
@@ -585,6 +590,17 @@ export default function Home() {
     }
   }
 
+  // Handle direct print
+  const handlePrint = async () => {
+    try {
+      const contentElement = await generateExportDocument()
+      printDocument(contentElement)
+    } catch (error) {
+      console.error("Error printing document:", error)
+      alert("Failed to print document. Please try again.")
+    }
+  }
+
   // Apply Tailwind-inspired styling to HTML content
   const applyTailwindStyling = (content: string): string => {
     // Replace basic HTML elements with Tailwind-styled versions
@@ -629,8 +645,8 @@ export default function Home() {
     styledContent = styledContent.replace(/<ol([^>]*)>(.*?)<\/ol>/gis, '<ol$1 class="list-decimal pl-5 mb-4">$2</ol>')
     styledContent = styledContent.replace(/<li([^>]*)>(.*?)<\/li>/gi, '<li$1 class="mb-1">$2</li>')
 
-    // Add container styling
-    styledContent = `<div class="max-w-4xl mx-auto p-6 bg-mint">
+    // Add container styling - removed the mint background to reduce green space
+    styledContent = `<div class="max-w-4xl mx-auto p-6">
       <div class="bg-white p-6 rounded-lg shadow-sm">
         ${styledContent}
       </div>
@@ -666,7 +682,6 @@ export default function Home() {
   return (
     <main className="h-screen flex flex-col">
       <div className="flex flex-1 overflow-hidden">
-        {/* Replace the sidebar section with: */}
         {/* Collapsible Sidebar */}
         <div
           className={`
@@ -675,35 +690,26 @@ export default function Home() {
             flex flex-col
           `}
         >
-          {/* Sidebar Header */}
-          <div className="p-4 border-b bg-sidebar flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-sidebar-accent" />
-              {sidebarOpen && <h1 className="text-xl font-bold text-sidebar-foreground">Document.st</h1>}
-            </div>
-            <Button variant="ghost" size="icon" onClick={toggleSidebar} className="text-sidebar-foreground">
-              {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
-          </div>
-
-          {/* Document List */}
-          <div className="flex-1 overflow-hidden">
-            <DocumentList
-              documents={documents}
-              activeDocumentId={activeDocumentId}
-              onSelectDocument={handleSelectDocument}
-              onCreateDocument={handleCreateDocument}
-              onDeleteDocument={handleDeleteDocument}
-              onRenameDocument={handleRenameDocument}
-            />
-          </div>
+          {/* Document List with collapsed state */}
+          <DocumentList
+            documents={documents}
+            activeDocumentId={activeDocumentId}
+            onSelectDocument={handleSelectDocument}
+            onCreateDocument={handleCreateDocument}
+            onDeleteDocument={handleDeleteDocument}
+            onRenameDocument={handleRenameDocument}
+            collapsed={!sidebarOpen}
+          />
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-mint">
+        <div className="flex-1 flex flex-col overflow-hidden bg-white">
           <div className="border-b p-2 flex items-center justify-between bg-white">
             <div className="flex items-center">
-              <div className="ml-2 text-sm font-medium truncate">
+              <Button variant="ghost" size="icon" onClick={toggleSidebar} className="mr-2">
+                {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </Button>
+              <div className="ml-2 text-sm font-medium truncate max-w-[200px] md:max-w-[400px]">
                 {documents.find((doc) => doc.id === activeDocumentId)?.title || "No document selected"}
               </div>
             </div>
@@ -814,6 +820,7 @@ export default function Home() {
                           onThemeChange={setDocumentTheme}
                           exportFormat={exportFormat}
                           setExportFormat={setExportFormat}
+                          documentRef={previewRef}
                         />
                       </div>
                     </div>
