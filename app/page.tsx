@@ -553,14 +553,14 @@ export default function Home() {
 
       const contentElement = await generateExportDocument()
 
-      // Generate a text document instead of DOCX
-      const textBlob = generateTextDocument(contentElement)
+      // Generate a DOCX document
+      const docxBlob = await generateTextDocument(contentElement)
 
-      // Download the text file
-      const url = URL.createObjectURL(textBlob)
+      // Download the DOCX file
+      const url = URL.createObjectURL(docxBlob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.txt`
+      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.docx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -568,8 +568,8 @@ export default function Home() {
       // Store the URL for future use
       setDocxUrl(url)
     } catch (error) {
-      console.error("Error generating text document:", error)
-      alert("Failed to generate text document. Please try again.")
+      console.error("Error generating DOCX document:", error)
+      alert("Failed to generate DOCX document. Please try again.")
     } finally {
       setIsGenerating(false)
     }

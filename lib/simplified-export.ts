@@ -1,272 +1,575 @@
 "use client"
 
-// Import jsPDF directly
 import { jsPDF } from "jspdf"
+import html2canvas from "html2canvas"
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  Table,
+  TableRow,
+  TableCell,
+  BorderStyle,
+  AlignmentType,
+} from "docx"
 
-// Helper function to create a simple print window
-function openPrintWindow(content: string, title = "Document"): void {
-  const printWindow = window.open("", "_blank", "width=800,height=600")
-  if (!printWindow) {
-    alert("Please allow pop-ups to print the document")
-    return
-  }
+// Print function - this is the most reliable
+export function printDocument(contentElement: HTMLElement): void {
+  try {
+    console.log("Opening print window...")
+    const printWindow = window.open("", "_blank", "width=800,height=600")
+    if (!printWindow) {
+      alert("Please allow pop-ups to print the document")
+      return
+    }
 
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>${title}</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          max-width: 800px;
-          margin: 0 auto;
-          padding: 20px;
-          background-color: #ffffff;
-        }
-        h1, h2, h3, h4, h5, h6 {
-          margin-top: 1.5em;
-          margin-bottom: 0.5em;
-        }
-        p {
-          margin-bottom: 1em;
-        }
-        table {
-          border-collapse: collapse;
-          width: 100%;
-          margin-bottom: 1em;
-        }
-        th, td {
-          border: 1px solid #ddd;
-          padding: 8px;
-        }
-        th {
-          background-color: #f2f2f2;
-        }
-        @media print {
+    // Create a clean version of the HTML with basic styling
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Print Document</title>
+        <style>
           body {
-            padding: 0;
-            margin: 0;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
           }
-        }
-      </style>
-    </head>
-    <body>
-      ${content}
-      <script>
-        // Auto-print when loaded
-        window.onload = function() {
-          setTimeout(() => {
-            window.print();
-          }, 500);
-        };
-      </script>
-    </body>
-    </html>
-  `)
+          h1, h2, h3, h4, h5, h6 {
+            color: #2ECC71;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+          }
+          p { margin-bottom: 1em; }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1em;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+          }
+          th {
+            background-color: #2ECC71;
+            color: white;
+          }
+          @media print {
+            body { padding: 0; margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${contentElement.innerHTML}
+        <script>
+          window.onload = function() {
+            setTimeout(() => window.print(), 500);
+          };
+        </script>
+      </body>
+      </html>
+    `)
 
-  printWindow.document.close()
+    printWindow.document.close()
+  } catch (error) {
+    console.error("Error opening print window:", error)
+    alert("Failed to open print window. Please try again.")
+  }
 }
 
-// Text-based PDF export function
+// Completely rewritten PDF export function
 export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting PDF generation...")
+    console.log("Starting PDF generation with simplified approach...")
 
-    // Create a new jsPDF instance
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    })
+    // Create a clean clone of the content in a temporary div
+    const tempDiv = document.createElement("div")
+    tempDiv.innerHTML = contentElement.innerHTML
 
-    // Get the content as text and HTML
-    const contentHtml = contentElement.innerHTML
-    const contentText = contentElement.innerText || contentElement.textContent || ""
+    // Apply basic styling
+    tempDiv.style.fontFamily = "Arial, sans-serif"
+    tempDiv.style.padding = "20px"
+    tempDiv.style.backgroundColor = "#ffffff"
+    tempDiv.style.width = "800px"
+    tempDiv.style.color = "#333333"
 
-    // Extract title and headings
-    const titleMatch = contentHtml.match(/<h1[^>]*>(.*?)<\/h1>/i)
-    const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "Document"
+    // Add styling for headings and tables
+    const styleElement = document.createElement("style")
+    styleElement.textContent = `
+      h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+      th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
+      td { padding: 8px; border: 1px solid #ddd; }
+    `
+    tempDiv.appendChild(styleElement)
 
-    // Set PDF metadata
-    pdf.setProperties({
-      title: title,
-      subject: "Generated Document",
-      author: "docfa.st",
-      keywords: "document, pdf, generated",
-      creator: "docfa.st",
-    })
+    // Temporarily add to document to render
+    tempDiv.style.position = "absolute"
+    tempDiv.style.left = "-9999px"
+    document.body.appendChild(tempDiv)
 
-    // Set font and size
-    pdf.setFont("helvetica")
-    pdf.setFontSize(12)
+    try {
+      // Create a new PDF document
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
 
-    // Parse HTML and add content to PDF
-    const lines = contentText.split("\n")
-    let y = 20 // Starting y position
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const margin = 20
-    const lineHeight = 7
+      // Use html2canvas with simplified options
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => {
+          // Additional styling for the cloned document if needed
+          const clonedContent = clonedDoc.querySelector("div")
+          if (clonedContent) {
+            clonedContent.style.width = "800px"
+          }
+        },
+      })
+
+      // Add the canvas as an image to the PDF
+      const imgData = canvas.toDataURL("image/jpeg", 0.95)
+      const imgWidth = 210 // A4 width in mm
+      const pageHeight = 297 // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      // Add image to first page
+      pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, imgHeight)
+
+      // Add additional pages if needed
+      let heightLeft = imgHeight - pageHeight
+      let position = -pageHeight
+
+      while (heightLeft > 0) {
+        pdf.addPage()
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+        position -= pageHeight
+      }
+
+      // Add footer to each page
+      const pageCount = pdf.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        pdf.setPage(i)
+        pdf.setFontSize(10)
+        pdf.setTextColor(150, 150, 150)
+        pdf.text(`Generated by docfa.st - Page ${i} of ${pageCount}`, imgWidth / 2, pageHeight - 10, {
+          align: "center",
+        })
+      }
+
+      console.log("PDF created successfully")
+      return pdf.output("blob")
+    } finally {
+      // Clean up
+      document.body.removeChild(tempDiv)
+    }
+  } catch (error) {
+    console.error("Error in PDF generation:", error)
+    // Return a simple text-based PDF as fallback
+    return generateFallbackPdf(contentElement)
+  }
+}
+
+// Fallback PDF generation that creates a simple text-based PDF
+function generateFallbackPdf(contentElement: HTMLElement): Promise<Blob> {
+  return new Promise((resolve) => {
+    console.log("Using fallback PDF generation...")
+    const pdf = new jsPDF()
+
+    // Extract text content
+    const text = contentElement.textContent || "Document content could not be extracted"
 
     // Add title
-    pdf.setFontSize(18)
-    pdf.setTextColor(46, 204, 113) // Green color
-    pdf.text(title, margin, y)
-    y += lineHeight * 2
+    const titleElement = contentElement.querySelector("h1")
+    const title = titleElement ? titleElement.textContent || "Document" : "Document"
 
-    // Reset font for body text
+    pdf.setFontSize(16)
+    pdf.setTextColor(46, 204, 113) // Green color
+    pdf.text(title, 20, 20)
+
+    // Add content as plain text
     pdf.setFontSize(12)
     pdf.setTextColor(0, 0, 0)
 
-    // Process each line
-    for (const line of lines) {
-      if (!line.trim()) {
-        y += lineHeight / 2
-        continue
-      }
-
-      // Check if we need a new page
-      if (y > pdf.internal.pageSize.getHeight() - margin) {
-        pdf.addPage()
-        y = margin
-      }
-
-      // Split long lines
-      const textLines = pdf.splitTextToSize(line, pageWidth - margin * 2)
-      pdf.text(textLines, margin, y)
-      y += lineHeight * textLines.length
-    }
+    const textLines = pdf.splitTextToSize(text, 170)
+    pdf.text(textLines, 20, 30)
 
     // Add footer
-    const pageCount = pdf.getNumberOfPages()
-    for (let i = 1; i <= pageCount; i++) {
-      pdf.setPage(i)
-      pdf.setFontSize(10)
-      pdf.setTextColor(150, 150, 150)
-      pdf.text(
-        `Generated by docfa.st - Page ${i} of ${pageCount}`,
-        pageWidth / 2,
-        pdf.internal.pageSize.getHeight() - 10,
-        {
-          align: "center",
+    pdf.setFontSize(10)
+    pdf.setTextColor(150, 150, 150)
+    pdf.text("Generated by docfa.st", 105, 280, { align: "center" })
+
+    resolve(pdf.output("blob"))
+  })
+}
+
+// Completely rewritten image export function
+export async function generateImage(contentElement: HTMLElement): Promise<Blob> {
+  try {
+    console.log("Starting image generation with simplified approach...")
+
+    // Create a clean clone of the content in a temporary div
+    const tempDiv = document.createElement("div")
+    tempDiv.innerHTML = contentElement.innerHTML
+
+    // Apply basic styling
+    tempDiv.style.fontFamily = "Arial, sans-serif"
+    tempDiv.style.padding = "20px"
+    tempDiv.style.backgroundColor = "#ffffff"
+    tempDiv.style.width = "800px"
+    tempDiv.style.color = "#333333"
+    tempDiv.style.boxSizing = "border-box"
+
+    // Add styling for headings and tables
+    const styleElement = document.createElement("style")
+    styleElement.textContent = `
+      h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+      th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
+      td { padding: 8px; border: 1px solid #ddd; }
+    `
+    tempDiv.appendChild(styleElement)
+
+    // Temporarily add to document to render
+    tempDiv.style.position = "absolute"
+    tempDiv.style.left = "-9999px"
+    document.body.appendChild(tempDiv)
+
+    try {
+      // Use html2canvas with simplified options
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => {
+          // Additional styling for the cloned document if needed
+          const clonedContent = clonedDoc.querySelector("div")
+          if (clonedContent) {
+            clonedContent.style.width = "800px"
+          }
         },
-      )
+      })
+
+      // Convert canvas to blob
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              console.log("Image created successfully")
+              resolve(blob)
+            } else {
+              reject(new Error("Failed to convert canvas to blob"))
+            }
+          },
+          "image/png",
+          0.95,
+        )
+      })
+    } finally {
+      // Clean up
+      document.body.removeChild(tempDiv)
     }
-
-    console.log("PDF created successfully")
-
-    // Convert to blob
-    const pdfBlob = pdf.output("blob")
-    return pdfBlob
   } catch (error) {
-    console.error("Error in PDF generation:", error)
-
-    // Fallback to print window method
-    console.log("Falling back to print window method...")
-    openPrintWindow(contentElement.innerHTML)
-
-    // Return a simple PDF with a message
-    const pdf = new jsPDF()
-    pdf.text("Your document has been opened in a new window for printing.", 10, 10)
-    pdf.text("Please use your browser's print function to save as PDF.", 10, 20)
-    return pdf.output("blob")
+    console.error("Error in image generation:", error)
+    // Create a simple fallback image with text
+    return generateFallbackImage(contentElement)
   }
 }
 
-// Simple HTML to image conversion
-export async function generateImage(contentElement: HTMLElement): Promise<Blob> {
-  try {
-    console.log("Starting image generation...")
+// Fallback image generation that creates a simple text-based image
+function generateFallbackImage(contentElement: HTMLElement): Promise<Blob> {
+  return new Promise((resolve) => {
+    console.log("Using fallback image generation...")
 
-    // Use the browser's built-in capabilities to render the content
+    // Create a canvas element
     const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")
+    canvas.width = 800
+    canvas.height = 600
 
+    const ctx = canvas.getContext("2d")
     if (!ctx) {
       throw new Error("Could not get canvas context")
     }
 
-    // Set canvas dimensions
-    canvas.width = 800
-    canvas.height = 1200
-
-    // Fill with white background
+    // Fill background
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw content as text
-    ctx.font = "14px Arial"
-    ctx.fillStyle = "#333333"
+    // Extract text content
+    const text = contentElement.textContent || "Document content could not be extracted"
 
-    // Get text content
-    const text = contentElement.innerText || contentElement.textContent || ""
-    const lines = text.split("\n")
-
-    // Draw title
-    const titleMatch = contentElement.innerHTML.match(/<h1[^>]*>(.*?)<\/h1>/i)
-    const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "Document"
+    // Add title
+    const titleElement = contentElement.querySelector("h1")
+    const title = titleElement ? titleElement.textContent || "Document" : "Document"
 
     ctx.font = "bold 24px Arial"
-    ctx.fillStyle = "#2ECC71" // Green color
-    ctx.fillText(title, 40, 50)
+    ctx.fillStyle = "#2ECC71"
+    ctx.fillText(title, 40, 40)
 
-    // Draw body text
-    ctx.font = "14px Arial"
+    // Add content as plain text
+    ctx.font = "16px Arial"
     ctx.fillStyle = "#333333"
 
+    // Simple text wrapping
+    const words = text.split(" ")
+    let line = ""
     let y = 80
-    for (const line of lines) {
-      if (!line.trim()) {
-        y += 10
-        continue
-      }
 
-      // Simple word wrapping
-      const words = line.split(" ")
-      let currentLine = ""
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line + words[i] + " "
+      const metrics = ctx.measureText(testLine)
+      const testWidth = metrics.width
 
-      for (const word of words) {
-        const testLine = currentLine + word + " "
-        const metrics = ctx.measureText(testLine)
+      if (testWidth > canvas.width - 80 && i > 0) {
+        ctx.fillText(line, 40, y)
+        line = words[i] + " "
+        y += 24
 
-        if (metrics.width > canvas.width - 80) {
-          ctx.fillText(currentLine, 40, y)
-          currentLine = word + " "
-          y += 20
-        } else {
-          currentLine = testLine
+        // Stop if we run out of canvas space
+        if (y > canvas.height - 40) {
+          ctx.fillText("...", 40, y)
+          break
         }
+      } else {
+        line = testLine
       }
+    }
 
-      ctx.fillText(currentLine, 40, y)
-      y += 20
+    // Add the last line
+    if (y < canvas.height - 40) {
+      ctx.fillText(line, 40, y)
     }
 
     // Add footer
     ctx.font = "12px Arial"
     ctx.fillStyle = "#999999"
-    ctx.fillText("Generated by docfa.st", canvas.width / 2 - 60, canvas.height - 30)
+    ctx.fillText("Generated by docfa.st", canvas.width / 2 - 60, canvas.height - 20)
 
-    return new Promise((resolve, reject) => {
-      try {
-        canvas.toBlob((blob) => {
-          if (blob) {
-            console.log("Image blob created successfully")
-            resolve(blob)
-          } else {
-            reject(new Error("Failed to convert canvas to blob"))
+    // Convert canvas to blob
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+      } else {
+        // If even this fails, create an empty blob
+        resolve(new Blob([""], { type: "image/png" }))
+      }
+    }, "image/png")
+  })
+}
+
+// Completely rewritten DOCX export function
+export async function generateTextDocument(contentElement: HTMLElement): Promise<Blob> {
+  try {
+    console.log("Starting DOCX generation with simplified approach...")
+
+    // Create a new Document
+    const doc = new Document({
+      sections: [
+        {
+          properties: {},
+          children: [],
+        },
+      ],
+    })
+
+    // Extract content from HTML
+    const children = []
+
+    // Add title
+    const titleElement = contentElement.querySelector("h1")
+    if (titleElement && titleElement.textContent) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: titleElement.textContent,
+              bold: true,
+              color: "2ECC71", // Green color
+              size: 32, // 16pt
+            }),
+          ],
+          heading: HeadingLevel.HEADING_1,
+        }),
+      )
+    }
+
+    // Process all elements in order
+    const elements = contentElement.querySelectorAll("h1, h2, h3, h4, h5, h6, p, ul, ol, table")
+    elements.forEach((element) => {
+      if (element.tagName === "H1" && element === titleElement) {
+        // Skip the title as we've already added it
+        return
+      }
+
+      if (element.tagName.startsWith("H")) {
+        const level = Number.parseInt(element.tagName.substring(1))
+        const headingLevel = level <= 6 ? (level as HeadingLevel) : HeadingLevel.HEADING_1
+
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: element.textContent || "",
+                bold: true,
+                color: "2ECC71", // Green color
+                size: 28 - level * 2, // Decrease size for deeper headings
+              }),
+            ],
+            heading: headingLevel,
+          }),
+        )
+      } else if (element.tagName === "P") {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: element.textContent || "",
+              }),
+            ],
+          }),
+        )
+      } else if (element.tagName === "UL" || element.tagName === "OL") {
+        const items = element.querySelectorAll("li")
+        items.forEach((item, index) => {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${element.tagName === "OL" ? (index + 1) + "." : "•"} ${item.textContent || ""}`,
+                }),
+              ],
+              indent: {
+                left: 720, // 0.5 inches in twips
+              },
+            }),
+          )
+        })
+      } else if (element.tagName === "TABLE") {
+        try {
+          const rows = element.querySelectorAll("tr")
+          const tableRows = []
+
+          rows.forEach((row) => {
+            const cells = row.querySelectorAll("th, td")
+            const tableCells = []
+
+            cells.forEach((cell) => {
+              tableCells.push(
+                new TableCell({
+                  children: [
+                    new Paragraph({
+                      children: [
+                        new TextRun({
+                          text: cell.textContent || "",
+                          bold: cell.tagName === "TH",
+                          color: cell.tagName === "TH" ? "FFFFFF" : "000000",
+                        }),
+                      ],
+                    }),
+                  ],
+                  shading:
+                    cell.tagName === "TH"
+                      ? {
+                          fill: "2ECC71", // Green color
+                        }
+                      : undefined,
+                }),
+              )
+            })
+
+            if (tableCells.length > 0) {
+              tableRows.push(new TableRow({ children: tableCells }))
+            }
+          })
+
+          if (tableRows.length > 0) {
+            children.push(
+              new Table({
+                rows: tableRows,
+                width: {
+                  size: 100,
+                  type: "pct",
+                },
+                borders: {
+                  top: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                  bottom: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                  left: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                  right: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                  insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                  insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                },
+              }),
+            )
           }
-        }, "image/png")
-      } catch (error) {
-        console.error("Error in canvas to blob conversion:", error)
-        reject(error)
+        } catch (tableError) {
+          console.error("Error processing table:", tableError)
+          // Add a paragraph indicating there was a table
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "[Table content could not be processed]",
+                  italics: true,
+                }),
+              ],
+            }),
+          )
+        }
       }
     })
+
+    // Ensure we have at least one paragraph if no content was extracted
+    if (children.length === 0) {
+      const text = contentElement.textContent || "No content"
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text,
+            }),
+          ],
+        }),
+      )
+    }
+
+    // Add footer
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: "Generated by docfa.st",
+            color: "808080",
+            size: 18, // 9pt
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+      }),
+    )
+
+    // Update the document with our content
+    doc.sections[0].children = children
+
+    // Generate the DOCX file
+    const buffer = await Packer.toBuffer(doc)
+    console.log("DOCX created successfully")
+    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
   } catch (error) {
-    console.error("Error in image generation:", error)
-    throw error
+    console.error("Error in DOCX generation:", error)
+    // Fallback to text document if DOCX generation fails
+    console.log("Falling back to text document")
+    const text = contentElement.innerText || contentElement.textContent || ""
+    return new Blob([text], { type: "text/plain" })
   }
 }
 
@@ -309,7 +612,8 @@ export function generateHtml(contentElement: HTMLElement): Blob {
             padding: 8px;
           }
           th {
-            background-color: #f2f2f2;
+            background-color: #2ECC71;
+            color: white;
           }
           footer {
             margin-top: 40px;
@@ -331,32 +635,5 @@ export function generateHtml(contentElement: HTMLElement): Blob {
   } catch (error) {
     console.error("Error in HTML generation:", error)
     throw error
-  }
-}
-
-// Simple text-based DOCX alternative
-export function generateTextDocument(contentElement: HTMLElement): Blob {
-  try {
-    console.log("Starting text document export...")
-
-    // Extract text content
-    const text = contentElement.innerText || contentElement.textContent || ""
-
-    console.log("Text document created successfully")
-    return new Blob([text], { type: "text/plain" })
-  } catch (error) {
-    console.error("Error in text document generation:", error)
-    throw error
-  }
-}
-
-// Direct print function
-export function printDocument(contentElement: HTMLElement): void {
-  try {
-    console.log("Opening print window...")
-    openPrintWindow(contentElement.innerHTML)
-  } catch (error) {
-    console.error("Error opening print window:", error)
-    alert("Failed to open print window. Please try again.")
   }
 }
