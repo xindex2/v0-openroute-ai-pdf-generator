@@ -30,69 +30,6 @@ const getAllTextContent = (element: HTMLElement): string => {
     .join("\n\n")
 }
 
-// Helper to extract HTML structure
-const extractStructure = (element: HTMLElement) => {
-  const structure: Array<{ type: string; level?: number; content: string; children?: any[] }> = []
-
-  // Process headings, paragraphs, lists
-  Array.from(element.children).forEach((child) => {
-    const tagName = child.tagName.toLowerCase()
-
-    if (tagName.match(/^h[1-6]$/)) {
-      const level = Number.parseInt(tagName.substring(1))
-      structure.push({
-        type: "heading",
-        level,
-        content: child.textContent || "",
-      })
-    } else if (tagName === "p") {
-      structure.push({
-        type: "paragraph",
-        content: child.textContent || "",
-      })
-    } else if (tagName === "ul" || tagName === "ol") {
-      const items = Array.from(child.querySelectorAll("li")).map((li) => li.textContent || "")
-      structure.push({
-        type: tagName,
-        content: "",
-        children: items.map((item) => ({ type: "li", content: item })),
-      })
-    } else if (tagName === "table") {
-      const rows: string[][] = []
-      const headerRow: string[] = []
-
-      // Extract table headers
-      Array.from(child.querySelectorAll("th")).forEach((th) => {
-        headerRow.push(th.textContent || "")
-      })
-
-      if (headerRow.length > 0) {
-        rows.push(headerRow)
-      }
-
-      // Extract table rows
-      Array.from(child.querySelectorAll("tr")).forEach((tr) => {
-        const cells = Array.from(tr.querySelectorAll("td")).map((td) => td.textContent || "")
-        if (cells.length > 0) {
-          rows.push(cells)
-        }
-      })
-
-      structure.push({
-        type: "table",
-        content: "",
-        children: rows,
-      })
-    } else if (child.children.length > 0) {
-      // Recursively process nested elements
-      const nestedStructure = extractStructure(child as HTMLElement)
-      structure.push(...nestedStructure)
-    }
-  })
-
-  return structure
-}
-
 // Simple saveAs implementation to replace file-saver dependency
 function saveAs(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
@@ -174,10 +111,169 @@ export function printDocument(contentElement: HTMLElement): void {
   }
 }
 
-// Completely rewritten PDF export function with improved rendering
+// Completely rewritten PDF export function with direct text-based approach
 export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting PDF generation with improved approach...")
+    console.log("Starting PDF generation with direct approach...")
+
+    // Create a new jsPDF instance
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    })
+
+    // Get the title if available
+    const titleElement = contentElement.querySelector("h1, h2, h3")
+    const title = titleElement ? titleElement.textContent || "Document" : "Document"
+
+    // Set up initial position
+    let yPos = 20
+
+    // Add title
+    pdf.setFontSize(18)
+    pdf.setTextColor(46, 204, 113) // Green color
+    pdf.text(title, 20, yPos)
+    yPos += 10
+
+    // Process all elements in order
+    const elements = contentElement.querySelectorAll("h1, h2, h3, h4, h5, h6, p, ul, ol, table, li")
+
+    pdf.setFontSize(12)
+    pdf.setTextColor(0, 0, 0)
+
+    for (const element of Array.from(elements)) {
+      const tagName = element.tagName.toLowerCase()
+      const text = element.textContent || ""
+
+      // Skip empty elements
+      if (!text.trim()) continue
+
+      // Skip if this is a list item and we're processing the list itself
+      if (
+        tagName === "li" &&
+        element.parentElement &&
+        (element.parentElement.tagName.toLowerCase() === "ul" || element.parentElement.tagName.toLowerCase() === "ol")
+      ) {
+        continue
+      }
+
+      // Add spacing
+      yPos += 5
+
+      // Check if we need a new page
+      if (yPos > 270) {
+        pdf.addPage()
+        yPos = 20
+      }
+
+      // Process based on element type
+      if (tagName.match(/^h[1-6]$/)) {
+        const level = Number.parseInt(tagName.substring(1))
+        const fontSize = 18 - level * 2
+
+        pdf.setFontSize(fontSize)
+        pdf.setTextColor(46, 204, 113) // Green color
+
+        const lines = pdf.splitTextToSize(text, 170)
+        pdf.text(lines, 20, yPos)
+        yPos += lines.length * (fontSize / 3) + 5
+
+        pdf.setFontSize(12)
+        pdf.setTextColor(0, 0, 0)
+      } else if (tagName === "p") {
+        const lines = pdf.splitTextToSize(text, 170)
+        pdf.text(lines, 20, yPos)
+        yPos += lines.length * 7
+      } else if (tagName === "ul" || tagName === "ol") {
+        const items = element.querySelectorAll("li")
+        let itemNumber = 1
+
+        for (const item of Array.from(items)) {
+          const itemText = item.textContent || ""
+          const prefix = tagName === "ul" ? "• " : `${itemNumber}. `
+          itemNumber++
+
+          const lines = pdf.splitTextToSize(prefix + itemText, 160)
+
+          // Check if we need a new page
+          if (yPos + lines.length * 7 > 270) {
+            pdf.addPage()
+            yPos = 20
+          }
+
+          pdf.text(lines, 25, yPos) // Indented
+          yPos += lines.length * 7
+        }
+      } else if (tagName === "table") {
+        // For tables, we'll create a simplified text representation
+        const rows = element.querySelectorAll("tr")
+        const tableData = []
+
+        // Process header row
+        const headerRow = element.querySelector("thead tr")
+        if (headerRow) {
+          const headers = headerRow.querySelectorAll("th")
+          const headerTexts = Array.from(headers).map((h) => h.textContent || "")
+
+          // Draw header with green background
+          pdf.setFillColor(46, 204, 113) // Green
+          pdf.setTextColor(255, 255, 255) // White text
+          pdf.rect(20, yPos - 5, 170, 10, "F")
+          pdf.text(headerTexts.join(" | "), 25, yPos)
+          yPos += 10
+
+          pdf.setTextColor(0, 0, 0) // Reset text color
+        }
+
+        // Process data rows
+        for (const row of Array.from(rows)) {
+          // Skip header row if it's in thead
+          if (row.parentElement && row.parentElement.tagName.toLowerCase() === "thead") {
+            continue
+          }
+
+          const cells = row.querySelectorAll("td")
+          if (cells.length === 0) continue
+
+          const cellTexts = Array.from(cells).map((c) => c.textContent || "")
+
+          // Check if we need a new page
+          if (yPos > 260) {
+            pdf.addPage()
+            yPos = 20
+          }
+
+          pdf.text(cellTexts.join(" | "), 25, yPos)
+          yPos += 7
+        }
+
+        yPos += 5 // Add extra space after table
+      }
+    }
+
+    // Add footer
+    const pageCount = pdf.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i)
+      pdf.setFontSize(10)
+      pdf.setTextColor(150, 150, 150)
+      pdf.text(`Generated by docfa.st - Page ${i} of ${pageCount}`, 105, 290, { align: "center" })
+    }
+
+    console.log("PDF created successfully with", pageCount, "pages")
+    return pdf.output("blob")
+  } catch (error) {
+    console.error("Error in PDF generation:", error)
+    // Return a simple text-based PDF as fallback
+    return generateFallbackPdf(contentElement)
+  }
+}
+
+// Alternative PDF generation using html2canvas
+export async function generatePdfWithCanvas(contentElement: HTMLElement): Promise<Blob> {
+  try {
+    console.log("Starting PDF generation with canvas approach...")
 
     // Create a clean clone of the content in a temporary div
     const tempDiv = document.createElement("div")
@@ -206,7 +302,8 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
     tempDiv.style.position = "absolute"
     tempDiv.style.left = "0"
     tempDiv.style.top = "0"
-    tempDiv.style.visibility = "hidden"
+    tempDiv.style.visibility = "visible"
+    tempDiv.style.zIndex = "-1000"
     document.body.appendChild(tempDiv)
 
     try {
@@ -281,7 +378,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
       document.body.removeChild(tempDiv)
     }
   } catch (error) {
-    console.error("Error in PDF generation:", error)
+    console.error("Error in PDF generation with canvas:", error)
     // Return a simple text-based PDF as fallback
     return generateFallbackPdf(contentElement)
   }
@@ -349,7 +446,10 @@ export async function generateImage(contentElement: HTMLElement): Promise<Blob> 
 
     // Temporarily add to document to render
     tempDiv.style.position = "absolute"
-    tempDiv.style.left = "-9999px"
+    tempDiv.style.left = "0"
+    tempDiv.style.top = "0"
+    tempDiv.style.visibility = "visible"
+    tempDiv.style.zIndex = "-1000"
     document.body.appendChild(tempDiv)
 
     try {

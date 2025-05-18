@@ -8,7 +8,13 @@ import MissingFieldsForm from "@/components/missing-fields-form"
 import ThemeCustomizer from "@/components/theme-customizer"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { generatePdf, generateHtml, generateTextDocument, printDocument } from "@/lib/simplified-export"
+import {
+  generatePdf,
+  generatePdfWithCanvas,
+  generateHtml,
+  generateTextDocument,
+  printDocument,
+} from "@/lib/simplified-export"
 
 interface DocumentActionsProps {
   onGenerateAndDownloadPdf: () => void
@@ -77,19 +83,37 @@ export default function DocumentActions({
       `
       contentClone.appendChild(styleElement)
 
-      // Generate PDF using the improved function
-      const pdfBlob = await generatePdf(contentClone)
+      // Try the direct text-based approach first
+      try {
+        const pdfBlob = await generatePdf(contentClone)
 
-      // Download the PDF
-      const url = URL.createObjectURL(pdfBlob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = "document.pdf"
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "document.pdf"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
 
-      setTimeout(() => URL.revokeObjectURL(url), 100)
+        setTimeout(() => URL.revokeObjectURL(url), 100)
+      } catch (directError) {
+        console.error("Error with direct PDF generation, trying canvas approach:", directError)
+
+        // Fall back to canvas-based approach
+        const pdfBlob = await generatePdfWithCanvas(contentClone)
+
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "document.pdf"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        setTimeout(() => URL.revokeObjectURL(url), 100)
+      }
     } catch (error) {
       console.error("Error generating PDF:", error)
       setExportError(`Failed to generate PDF: ${error instanceof Error ? error.message : String(error)}`)

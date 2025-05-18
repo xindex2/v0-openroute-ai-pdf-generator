@@ -13,7 +13,14 @@ import DocumentActions from "@/components/document-actions"
 import VersionHistory from "@/components/version-history"
 import DocumentList, { type Document } from "@/components/document-list"
 // Update imports to include the new export functions
-import { generatePdf, generateImage, generateHtml, generateTextDocument, printDocument } from "@/lib/simplified-export"
+import {
+  generatePdf,
+  generatePdfWithCanvas,
+  generateImage,
+  generateHtml,
+  generateTextDocument,
+  printDocument,
+} from "@/lib/simplified-export"
 
 // Add the TypingAnimation component
 function TypingAnimation({ text, speed = 50 }: { text: string; speed?: number }) {
@@ -477,6 +484,10 @@ export default function Home() {
           color: ${documentTheme.primaryColor};
         }
         a {
+          color  h4, h5, h6 {
+          color: ${documentTheme.primaryColor};
+        }
+        a {
           color: ${documentTheme.accentColor};
         }
         table {
@@ -549,20 +560,39 @@ export default function Home() {
       `
       contentClone.appendChild(styleElement)
 
-      // Generate the PDF using the simplified function
-      const pdfBlob = await generatePdf(contentClone)
+      // Try the direct text-based approach first
+      try {
+        const pdfBlob = await generatePdf(contentClone)
 
-      // Download the PDF
-      const url = URL.createObjectURL(pdfBlob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
 
-      // Store the URL for future use
-      setPdfUrl(url)
+        // Store the URL for future use
+        setPdfUrl(url)
+      } catch (directError) {
+        console.error("Error with direct PDF generation, trying canvas approach:", directError)
+
+        // Fall back to canvas-based approach
+        const pdfBlob = await generatePdfWithCanvas(contentClone)
+
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `${documents.find((doc) => doc.id === activeDocumentId)?.title || "document"}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        // Store the URL for future use
+        setPdfUrl(url)
+      }
     } catch (error) {
       console.error("Error generating PDF:", error)
       alert("Failed to generate PDF. Please try again.")
@@ -702,7 +732,7 @@ export default function Home() {
     styledContent = styledContent.replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse mb-6">')
     styledContent = styledContent.replace(
       /<th([^>]*)>(.*?)<\/th>/gi,
-      '<th$1 class="bg-todo-green text-white p-3 text-left">',
+      '<th$1 class="bg-todo-green text-white p-3 text-left">$2</th>',
     )
     styledContent = styledContent.replace(
       /<td([^>]*)>(.*?)<\/td>/gi,
