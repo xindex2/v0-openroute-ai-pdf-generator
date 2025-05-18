@@ -457,18 +457,64 @@ export default function Home() {
         }
       })
 
-      // Highlight remaining placeholders
+      // Highlight remaining placeholders with proper HTML instead of classes
       processedContent = processedContent.replace(
         /\[(.*?)\]/g,
-        '<span class="bg-yellow-200 text-black px-1 rounded">[$1]</span>',
+        '<span style="background-color: #FFEB3B; color: black; padding: 0 4px; border-radius: 4px;">[$1]</span>',
       )
 
       // Clean up any \`\`\`html and \`\`\` markers
       processedContent = processedContent.replace(/```html/g, "")
       processedContent = processedContent.replace(/```/g, "")
 
-      // Apply Tailwind-inspired styling
-      processedContent = applyTailwindStyling(processedContent)
+      // Apply direct styling instead of Tailwind classes
+      processedContent = processedContent
+        // Replace Tailwind heading classes with direct styles
+        .replace(
+          /<h1([^>]*) class="[^"]*"([^>]*)>(.*?)<\/h1>/gi,
+          '<h1$1 style="font-size: 1.875rem; font-weight: bold; margin-bottom: 1.5rem; color: #2ECC71;"$2>$3</h1>',
+        )
+        .replace(
+          /<h2([^>]*) class="[^"]*"([^>]*)>(.*?)<\/h2>/gi,
+          '<h2$1 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; color: #2ECC71;"$2>$3</h2>',
+        )
+        .replace(
+          /<h3([^>]*) class="[^"]*"([^>]*)>(.*?)<\/h3>/gi,
+          '<h3$1 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 0.75rem; color: #2ECC71;"$2>$3</h3>',
+        )
+        // Replace Tailwind paragraph classes with direct styles
+        .replace(
+          /<p([^>]*) class="[^"]*"([^>]*)>(.*?)<\/p>/gi,
+          '<p$1 style="margin-bottom: 1rem; color: #333333;"$2>$3</p>',
+        )
+        // Replace Tailwind table classes with direct styles
+        .replace(
+          /<table([^>]*) class="[^"]*"([^>]*)>/gi,
+          '<table$1 style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;"$2>',
+        )
+        .replace(
+          /<th([^>]*) class="[^"]*"([^>]*)>(.*?)<\/th>/gi,
+          '<th$1 style="background-color: #2ECC71; color: white; padding: 0.75rem; text-align: left; border: 1px solid #ddd;"$2>$3</th>',
+        )
+        .replace(
+          /<td([^>]*) class="[^"]*"([^>]*)>(.*?)<\/td>/gi,
+          '<td$1 style="padding: 0.75rem; border: 1px solid #ddd;"$2>$3</td>',
+        )
+        // Replace Tailwind list classes with direct styles
+        .replace(
+          /<ul([^>]*) class="[^"]*"([^>]*)>(.*?)<\/ul>/gis,
+          '<ul$1 style="list-style-type: disc; padding-left: 1.25rem; margin-bottom: 1rem;"$2>$3</ul>',
+        )
+        .replace(
+          /<ol([^>]*) class="[^"]*"([^>]*)>(.*?)<\/ol>/gis,
+          '<ol$1 style="list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 1rem;"$2>$3</ol>',
+        )
+        .replace(/<li([^>]*) class="[^"]*"([^>]*)>(.*?)<\/li>/gi, '<li$1 style="margin-bottom: 0.25rem;"$2>$3</li>')
+        // Add transaction details section styling
+        .replace(
+          /<div([^>]*) class="[^"]*bg-(blue|sky|slate)[^"]*"([^>]*)>(.*?)<\/div>/gis,
+          '<div$1 style="background-color: #E3F2FD; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;"$3>$4</div>',
+        )
 
       contentElement.innerHTML = processedContent
 
@@ -476,53 +522,9 @@ export default function Home() {
       contentElement.style.fontFamily = documentTheme.fontFamily
       contentElement.style.color = documentTheme.textColor
       contentElement.style.backgroundColor = documentTheme.backgroundColor
-
-      // Add CSS for styling
-      const styleElement = document.createElement("style")
-      styleElement.textContent = `
-        h1, h2, h3, h4, h5, h6 {
-          color: ${documentTheme.primaryColor};
-        }
-        a {
-          color  h4, h5, h6 {
-          color: ${documentTheme.primaryColor};
-        }
-        a {
-          color: ${documentTheme.accentColor};
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 20px;
-        }
-        th {
-          background-color: ${documentTheme.secondaryColor};
-          color: white;
-          text-align: left;
-          padding: 12px;
-          border-bottom: 2px solid #e2e8f0;
-        }
-        td {
-          padding: 12px;
-          border-bottom: 1px solid #e2e8f0;
-        }
-        .header {
-          background-color: ${documentTheme.primaryColor};
-          color: white;
-          padding: 20px;
-          margin-bottom: 30px;
-          border-radius: 5px;
-        }
-        .footer {
-          margin-top: 40px;
-          padding-top: 20px;
-          border-top: 1px solid #e2e8f0;
-          text-align: center;
-          font-size: 14px;
-          color: ${documentTheme.secondaryColor};
-        }
-      `
-      contentElement.appendChild(styleElement)
+      contentElement.style.padding = "20px"
+      contentElement.style.maxWidth = "800px"
+      contentElement.style.margin = "0 auto"
 
       return contentElement
     } catch (error) {

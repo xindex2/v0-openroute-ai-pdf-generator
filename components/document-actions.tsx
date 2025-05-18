@@ -52,7 +52,7 @@ export default function DocumentActions({
   const [exportError, setExportError] = useState<string | null>(null)
   const [isGeneratingLocal, setIsGeneratingLocal] = useState(false)
 
-  // Function to handle PDF export directly
+  // Update the handlePdfExport function to better handle styling
   const handlePdfExport = async () => {
     try {
       setExportError(null)
@@ -66,22 +66,39 @@ export default function DocumentActions({
       const contentClone = document.createElement("div")
       contentClone.innerHTML = documentRef.current.innerHTML
 
+      // Process placeholder spans to ensure they have proper styling
+      const placeholderSpans = contentClone.querySelectorAll("span[class*='bg-yellow']")
+      placeholderSpans.forEach((span) => {
+        span.style.backgroundColor = "#FFEB3B"
+        span.style.color = "#000000"
+        span.style.padding = "2px 4px"
+        span.style.borderRadius = "4px"
+      })
+
+      // Process headings to ensure they have proper styling
+      const headings = contentClone.querySelectorAll("h1, h2, h3, h4, h5, h6")
+      headings.forEach((heading) => {
+        heading.style.color = "#2ECC71"
+        heading.style.marginBottom = "10px"
+      })
+
+      // Process transaction details section
+      const transactionDetails = contentClone.querySelector(
+        "div[class*='bg-blue'], div[class*='bg-sky'], div[class*='bg-slate']",
+      )
+      if (transactionDetails) {
+        transactionDetails.style.backgroundColor = "#E3F2FD"
+        transactionDetails.style.padding = "15px"
+        transactionDetails.style.borderRadius = "8px"
+        transactionDetails.style.marginBottom = "20px"
+      }
+
       // Apply basic styling
       contentClone.style.fontFamily = "Arial, sans-serif"
       contentClone.style.padding = "20px"
       contentClone.style.backgroundColor = "#ffffff"
       contentClone.style.width = "800px"
       contentClone.style.color = "#333333"
-
-      // Add styling for headings and tables
-      const styleElement = document.createElement("style")
-      styleElement.textContent = `
-        h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-        th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
-        td { padding: 8px; border: 1px solid #ddd; }
-      `
-      contentClone.appendChild(styleElement)
 
       // Try the direct text-based approach first
       try {
@@ -122,7 +139,7 @@ export default function DocumentActions({
     }
   }
 
-  // Function to handle DOCX export directly
+  // Update the handleDocxExport function to better handle styling
   const handleDocxExport = async () => {
     try {
       setExportError(null)
@@ -135,6 +152,15 @@ export default function DocumentActions({
       // Create a clean clone of the content
       const contentClone = document.createElement("div")
       contentClone.innerHTML = documentRef.current.innerHTML
+
+      // Process placeholder spans to ensure they have proper styling
+      const placeholderSpans = contentClone.querySelectorAll("span[class*='bg-yellow']")
+      placeholderSpans.forEach((span) => {
+        // For DOCX, we'll just keep the text content with brackets
+        const text = span.textContent || ""
+        const textNode = document.createTextNode(text)
+        span.parentNode?.replaceChild(textNode, span)
+      })
 
       // Apply basic styling
       contentClone.style.fontFamily = "Arial, sans-serif"
