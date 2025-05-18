@@ -128,6 +128,9 @@ importers:
       jspdf:
         specifier: latest
         version: 3.0.1
+      jspdf-autotable:
+        specifier: latest
+        version: 5.0.2(jspdf@3.0.1)
       lucide-react:
         specifier: ^0.454.0
         version: 0.454.0(react@19.0.0)
@@ -1583,6 +1586,11 @@ packages:
     resolution: {integrity: sha512-3QItJOXp2AP1uv7waBkao5nCvhEv+QmJAd38Ybq7wNI74Q+BBmnLn4EDKz6yI9xGAIQoUF87qHt+kc1IVxB4zQ==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
+
+  jspdf-autotable@5.0.2:
+    resolution: {integrity: sha512-YNKeB7qmx3pxOLcNeoqAv3qTS7KuvVwkFe5AduCawpop3NOkBUtqDToxNc225MlNecxT4kP2Zy3z/y/yvGdXUQ==}
+    peerDependencies:
+      jspdf: ^2 || ^3
 
   jspdf@3.0.1:
     resolution: {integrity: sha512-qaGIxqxetdoNnFQQXxTKUD9/Z7AloLaw94fFsOiJMxbfYdBbrBuhWmbzI8TVjrw7s3jBY1PFHofBKMV/wZPapg==}
@@ -3504,6 +3512,10 @@ snapshots:
       '@types/diff-match-patch': 1.0.36
       chalk: 5.4.1
       diff-match-patch: 1.0.5
+
+  jspdf-autotable@5.0.2(jspdf@3.0.1):
+    dependencies:
+      jspdf: 3.0.1
 
   jspdf@3.0.1:
     dependencies:

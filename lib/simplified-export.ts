@@ -16,6 +16,7 @@ import {
 } from "docx"
 import html2canvas from "html2canvas"
 import { jsPDF } from "jspdf"
+import "jspdf-autotable"
 
 // Helper function to get text content from HTML element
 const getTextContent = (element: HTMLElement): string => {
@@ -111,10 +112,10 @@ export function printDocument(contentElement: HTMLElement): void {
   }
 }
 
-// Replace the generatePdf function with this improved version that properly handles HTML and CSS
+// Completely rewritten PDF export function that creates a text-based PDF
 export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting PDF generation with direct approach...")
+    console.log("Starting text-based PDF generation...")
 
     // Create a new jsPDF instance
     const pdf = new jsPDF({
@@ -122,6 +123,262 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
       unit: "mm",
       format: "a4",
     })
+
+    // Create a clean clone of the content
+    const tempDiv = document.createElement("div")
+    tempDiv.innerHTML = contentElement.innerHTML
+
+    // Process placeholder spans to ensure they have proper styling
+    const placeholderSpans = tempDiv.querySelectorAll("span[class*='bg-yellow']")
+    placeholderSpans.forEach((span) => {
+      // Mark placeholders for special handling
+      span.setAttribute("data-placeholder", "true")
+    })
+
+    // Get the title if available
+    const titleElement = tempDiv.querySelector("h1, h2, h3")
+    const title = titleElement ? titleElement.textContent || "Document" : "Document"
+
+    // Set up initial position
+    let yPos = 20
+
+    // Add title
+    pdf.setFontSize(18)
+    pdf.setTextColor(46, 204, 113) // Green color
+    pdf.text(title, 20, yPos)
+    yPos += 15
+
+    // Set default text color and font size
+    pdf.setFontSize(12)
+    pdf.setTextColor(0, 0, 0)
+
+    // Process all elements in order
+    const elements = tempDiv.querySelectorAll("h1, h2, h3, h4, h5, h6, p, ul, ol, table, div")
+
+    for (const element of Array.from(elements)) {
+      const tagName = element.tagName.toLowerCase()
+
+      // Skip empty elements
+      if (!element.textContent?.trim()) continue
+
+      // Skip if this is a list item and we're processing the list itself
+      if (
+        tagName === "li" &&
+        element.parentElement &&
+        (element.parentElement.tagName.toLowerCase() === "ul" || element.parentElement.tagName.toLowerCase() === "ol")
+      ) {
+        continue
+      }
+
+      // Add spacing
+      yPos += 5
+
+      // Check if we need a new page
+      if (yPos > 270) {
+        pdf.addPage()
+        yPos = 20
+      }
+
+      // Process based on element type
+      if (tagName.match(/^h[1-6]$/)) {
+        const level = Number.parseInt(tagName.substring(1))
+        const fontSize = 18 - level * 2
+
+        pdf.setFontSize(fontSize)
+        pdf.setTextColor(46, 204, 113) // Green color
+
+        const text = element.textContent || ""
+        const lines = pdf.splitTextToSize(text, 170)
+        pdf.text(lines, 20, yPos)
+        yPos += lines.length * (fontSize / 3) + 5
+
+        pdf.setFontSize(12)
+        pdf.setTextColor(0, 0, 0)
+      } else if (tagName === "p") {
+        const text = element.textContent || ""
+
+        // Check for placeholders in this paragraph
+        const hasPlaceholders = element.querySelector('[data-placeholder="true"]')
+
+        if (hasPlaceholders) {
+          // Handle paragraphs with placeholders
+          const placeholders = element.querySelectorAll('[data-placeholder="true"]')
+          const plainText = text
+
+          // Highlight placeholders in yellow
+          placeholders.forEach((placeholder) => {
+            const placeholderText = placeholder.textContent || ""
+            pdf.setFillColor(255, 235, 59) // Yellow
+
+            // Calculate position for highlighting
+            const beforeText = plainText.split(placeholderText)[0]
+            const textWidth = pdf.getTextWidth(beforeText)
+            const placeholderWidth = pdf.getTextWidth(placeholderText)
+
+            // We'll handle this when we implement the text
+          })
+
+          // Just output the text normally for now
+          const lines = pdf.splitTextToSize(text, 170)
+          pdf.text(lines, 20, yPos)
+          yPos += lines.length * 7
+        } else {
+          // Regular paragraph without placeholders
+          const lines = pdf.splitTextToSize(text, 170)
+          pdf.text(lines, 20, yPos)
+          yPos += lines.length * 7
+        }
+      } else if (tagName === "ul" || tagName === "ol") {
+        const items = element.querySelectorAll("li")
+        let itemNumber = 1
+
+        for (const item of Array.from(items)) {
+          const itemText = item.textContent || ""
+          const prefix = tagName === "ul" ? "• " : `${itemNumber}. `
+          itemNumber++
+
+          const lines = pdf.splitTextToSize(prefix + itemText, 160)
+
+          // Check if we need a new page
+          if (yPos + lines.length * 7 > 270) {
+            pdf.addPage()
+            yPos = 20
+          }
+
+          pdf.text(lines, 25, yPos) // Indented
+          yPos += lines.length * 7
+        }
+      } else if (tagName === "table") {
+        try {
+          // Use jsPDF-AutoTable for better table support
+          const tableData: string[][] = []
+          const tableColumns: string[] = []
+
+          // Get header row
+          const headerRow = element.querySelector("thead tr")
+          if (headerRow) {
+            const headers = headerRow.querySelectorAll("th")
+            headers.forEach((header) => {
+              tableColumns.push(header.textContent || "")
+            })
+          }
+
+          // Get data rows
+          const rows = element.querySelectorAll("tbody tr")
+          rows.forEach((row) => {
+            const rowData: string[] = []
+            const cells = row.querySelectorAll("td")
+            cells.forEach((cell) => {
+              rowData.push(cell.textContent || "")
+            })
+            if (rowData.length > 0) {
+              tableData.push(rowData)
+            }
+          })
+
+          // If we have data, create the table
+          if (tableData.length > 0 || tableColumns.length > 0) {
+            // @ts-ignore - jspdf-autotable adds this method
+            pdf.autoTable({
+              head: tableColumns.length > 0 ? [tableColumns] : undefined,
+              body: tableData,
+              startY: yPos,
+              theme: "grid",
+              headStyles: {
+                fillColor: [46, 204, 113], // Green
+                textColor: [255, 255, 255], // White
+                fontStyle: "bold",
+              },
+              margin: { left: 20, right: 20 },
+              styles: {
+                overflow: "linebreak",
+                cellPadding: 3,
+              },
+            })
+
+            // @ts-ignore - jspdf-autotable adds this property
+            yPos = pdf.lastAutoTable.finalY + 10
+          }
+        } catch (tableError) {
+          console.error("Error processing table with autoTable:", tableError)
+
+          // Fallback to simple text representation
+          const rows = element.querySelectorAll("tr")
+
+          pdf.text("Table:", 20, yPos)
+          yPos += 7
+
+          rows.forEach((row) => {
+            const cells = row.querySelectorAll("th, td")
+            const rowText = Array.from(cells)
+              .map((cell) => cell.textContent)
+              .join(" | ")
+
+            const lines = pdf.splitTextToSize(rowText, 170)
+            pdf.text(lines, 25, yPos) // Indented
+            yPos += lines.length * 7
+          })
+
+          yPos += 5 // Add extra space after table
+        }
+      } else if (tagName === "div") {
+        // Check if this is a transaction details section (blue background)
+        const hasBlueBackground =
+          element.className.includes("bg-blue") ||
+          element.className.includes("bg-sky") ||
+          element.className.includes("bg-slate") ||
+          element.style.backgroundColor?.includes("rgb(227, 242, 253)") // #E3F2FD
+
+        if (hasBlueBackground) {
+          // Draw a blue background rectangle
+          pdf.setFillColor(227, 242, 253) // #E3F2FD - light blue
+          pdf.rect(15, yPos - 5, 180, 40, "F")
+
+          // Process the content inside the div
+          const paragraphs = element.querySelectorAll("p")
+
+          paragraphs.forEach((p) => {
+            const text = p.textContent || ""
+            const lines = pdf.splitTextToSize(text, 160)
+            pdf.text(lines, 20, yPos)
+            yPos += lines.length * 7
+          })
+
+          // If no paragraphs, just use the text content
+          if (paragraphs.length === 0) {
+            const text = element.textContent || ""
+            const lines = pdf.splitTextToSize(text, 160)
+            pdf.text(lines, 20, yPos)
+            yPos += lines.length * 7
+          }
+
+          yPos += 5 // Add extra space after the section
+        }
+      }
+    }
+
+    // Add footer
+    const pageCount = pdf.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i)
+      pdf.setFontSize(10)
+      pdf.setTextColor(150, 150, 150)
+      pdf.text(`Generated by docfa.st - Page ${i} of ${pageCount}`, 105, 290, { align: "center" })
+    }
+
+    console.log("Text-based PDF created successfully with", pageCount, "pages")
+    return pdf.output("blob")
+  } catch (error) {
+    console.error("Error in text-based PDF generation:", error)
+    // Fall back to canvas-based approach if text-based fails
+    return generatePdfWithCanvas(contentElement)
+  }
+}
+
+// Keep the canvas-based approach as a fallback
+export async function generatePdfWithCanvas(contentElement: HTMLElement): Promise<Blob> {
+  try {
+    console.log("Starting PDF generation with canvas approach (fallback)...")
 
     // Create a clean clone of the content in a temporary div
     const tempDiv = document.createElement("div")
@@ -135,32 +392,16 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
     tempDiv.style.color = "#333333"
     tempDiv.style.boxSizing = "border-box"
 
-    // Process placeholder spans to ensure they have proper styling
-    const placeholderSpans = tempDiv.querySelectorAll("span[class*='bg-yellow']")
-    placeholderSpans.forEach((span) => {
-      span.style.backgroundColor = "#FFEB3B"
-      span.style.color = "#000000"
-      span.style.padding = "2px 4px"
-      span.style.borderRadius = "4px"
-    })
-
-    // Process headings to ensure they have proper styling
-    const headings = tempDiv.querySelectorAll("h1, h2, h3, h4, h5, h6")
-    headings.forEach((heading) => {
-      heading.style.color = "#2ECC71"
-      heading.style.marginBottom = "10px"
-    })
-
-    // Process transaction details section
-    const transactionDetails = tempDiv.querySelector(
-      "div[class*='bg-blue'], div[class*='bg-sky'], div[class*='bg-slate']",
-    )
-    if (transactionDetails) {
-      transactionDetails.style.backgroundColor = "#E3F2FD"
-      transactionDetails.style.padding = "15px"
-      transactionDetails.style.borderRadius = "8px"
-      transactionDetails.style.marginBottom = "20px"
-    }
+    // Add styling for headings and tables
+    const styleElement = document.createElement("style")
+    styleElement.textContent = `
+      h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+      th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
+      td { padding: 8px; border: 1px solid #ddd; }
+      img { max-width: 100%; height: auto; }
+    `
+    tempDiv.appendChild(styleElement)
 
     // Temporarily add to document to render
     tempDiv.style.position = "absolute"
@@ -173,6 +414,13 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
     try {
       // Wait a moment for any fonts or resources to load
       await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Create a new PDF document
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      })
 
       // Use html2canvas with improved options
       const canvas = await html2canvas(tempDiv, {
@@ -228,269 +476,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
         })
       }
 
-      console.log("PDF created successfully with", pageCount, "pages")
-      return pdf.output("blob")
-    } finally {
-      // Clean up
-      document.body.removeChild(tempDiv)
-    }
-  } catch (error) {
-    console.error("Error in PDF generation:", error)
-    // Try the text-based approach as fallback
-    return generateTextBasedPdf(contentElement)
-  }
-}
-
-// Add this new function for text-based PDF generation as a fallback
-function generateTextBasedPdf(contentElement: HTMLElement): Promise<Blob> {
-  return new Promise((resolve) => {
-    console.log("Using text-based PDF generation...")
-    const pdf = new jsPDF()
-
-    // Get the title if available
-    const titleElement = contentElement.querySelector("h1, h2, h3")
-    const title = titleElement ? titleElement.textContent || "Document" : "Document"
-
-    // Set up initial position
-    let yPos = 20
-
-    // Add title
-    pdf.setFontSize(18)
-    pdf.setTextColor(46, 204, 113) // Green color
-    pdf.text(title, 20, yPos)
-    yPos += 10
-
-    // Process all elements in order
-    const elements = contentElement.querySelectorAll("h1, h2, h3, h4, h5, h6, p, ul, ol, table, li")
-
-    pdf.setFontSize(12)
-    pdf.setTextColor(0, 0, 0)
-
-    for (const element of Array.from(elements)) {
-      const tagName = element.tagName.toLowerCase()
-      const text = element.textContent || ""
-
-      // Skip empty elements
-      if (!text.trim()) continue
-
-      // Skip if this is a list item and we're processing the list itself
-      if (
-        tagName === "li" &&
-        element.parentElement &&
-        (element.parentElement.tagName.toLowerCase() === "ul" || element.parentElement.tagName.toLowerCase() === "ol")
-      ) {
-        continue
-      }
-
-      // Add spacing
-      yPos += 5
-
-      // Check if we need a new page
-      if (yPos > 270) {
-        pdf.addPage()
-        yPos = 20
-      }
-
-      // Process based on element type
-      if (tagName.match(/^h[1-6]$/)) {
-        const level = Number.parseInt(tagName.substring(1))
-        const fontSize = 18 - level * 2
-
-        pdf.setFontSize(fontSize)
-        pdf.setTextColor(46, 204, 113) // Green color
-
-        const lines = pdf.splitTextToSize(text, 170)
-        pdf.text(lines, 20, yPos)
-        yPos += lines.length * (fontSize / 3) + 5
-
-        pdf.setFontSize(12)
-        pdf.setTextColor(0, 0, 0)
-      } else if (tagName === "p") {
-        const lines = pdf.splitTextToSize(text, 170)
-        pdf.text(lines, 20, yPos)
-        yPos += lines.length * 7
-      } else if (tagName === "ul" || tagName === "ol") {
-        const items = element.querySelectorAll("li")
-        let itemNumber = 1
-
-        for (const item of Array.from(items)) {
-          const itemText = item.textContent || ""
-          const prefix = tagName === "ul" ? "• " : `${itemNumber}. `
-          itemNumber++
-
-          const lines = pdf.splitTextToSize(prefix + itemText, 160)
-
-          // Check if we need a new page
-          if (yPos + lines.length * 7 > 270) {
-            pdf.addPage()
-            yPos = 20
-          }
-
-          pdf.text(lines, 25, yPos) // Indented
-          yPos += lines.length * 7
-        }
-      } else if (tagName === "table") {
-        // For tables, we'll create a simplified text representation
-        const rows = element.querySelectorAll("tr")
-        const tableData = []
-
-        // Process header row
-        const headerRow = element.querySelector("thead tr")
-        if (headerRow) {
-          const headers = headerRow.querySelectorAll("th")
-          const headerTexts = Array.from(headers).map((h) => h.textContent || "")
-
-          // Draw header with green background
-          pdf.setFillColor(46, 204, 113) // Green
-          pdf.setTextColor(255, 255, 255) // White text
-          pdf.rect(20, yPos - 5, 170, 10, "F")
-          pdf.text(headerTexts.join(" | "), 25, yPos)
-          yPos += 10
-
-          pdf.setTextColor(0, 0, 0) // Reset text color
-        }
-
-        // Process data rows
-        for (const row of Array.from(rows)) {
-          // Skip header row if it's in thead
-          if (row.parentElement && row.parentElement.tagName.toLowerCase() === "thead") {
-            continue
-          }
-
-          const cells = row.querySelectorAll("td")
-          if (cells.length === 0) continue
-
-          const cellTexts = Array.from(cells).map((c) => c.textContent || "")
-
-          // Check if we need a new page
-          if (yPos > 260) {
-            pdf.addPage()
-            yPos = 20
-          }
-
-          pdf.text(cellTexts.join(" | "), 25, yPos)
-          yPos += 7
-        }
-
-        yPos += 5 // Add extra space after table
-      }
-    }
-
-    // Add footer
-    const pageCount = pdf.getNumberOfPages()
-    for (let i = 1; i <= pageCount; i++) {
-      pdf.setPage(i)
-      pdf.setFontSize(10)
-      pdf.setTextColor(150, 150, 150)
-      pdf.text(`Generated by docfa.st - Page ${i} of ${pageCount}`, 105, 290, { align: "center" })
-    }
-
-    resolve(pdf.output("blob"))
-  })
-}
-
-// Alternative PDF generation using html2canvas
-export async function generatePdfWithCanvas(contentElement: HTMLElement): Promise<Blob> {
-  try {
-    console.log("Starting PDF generation with canvas approach...")
-
-    // Create a clean clone of the content in a temporary div
-    const tempDiv = document.createElement("div")
-    tempDiv.innerHTML = contentElement.innerHTML
-
-    // Apply basic styling
-    tempDiv.style.fontFamily = "Arial, sans-serif"
-    tempDiv.style.padding = "20px"
-    tempDiv.style.backgroundColor = "#ffffff"
-    tempDiv.style.width = "800px"
-    tempDiv.style.color = "#333333"
-    tempDiv.style.boxSizing = "border-box"
-
-    // Add styling for headings and tables
-    const styleElement = document.createElement("style")
-    styleElement.textContent = `
-      h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-      th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
-      td { padding: 8px; border: 1px solid #ddd; }
-      img { max-width: 100%; height: auto; }
-    `
-    tempDiv.appendChild(styleElement)
-
-    // Temporarily add to document to render
-    tempDiv.style.position = "absolute"
-    tempDiv.style.left = "0"
-    tempDiv.style.top = "0"
-    tempDiv.style.visibility = "visible"
-    tempDiv.style.zIndex = "-1000"
-    document.body.appendChild(tempDiv)
-
-    try {
-      // Wait a moment for any fonts or resources to load
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Create a new PDF document
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-      })
-
-      // Use html2canvas with improved options
-      const canvas = await html2canvas(tempDiv, {
-        scale: 2, // Higher scale for better quality
-        useCORS: true,
-        logging: true, // Enable logging for debugging
-        backgroundColor: "#ffffff",
-        allowTaint: true, // Allow cross-origin images
-        windowWidth: 800,
-        windowHeight: tempDiv.scrollHeight,
-        onclone: (clonedDoc) => {
-          // Additional styling for the cloned document
-          const clonedContent = clonedDoc.querySelector("div")
-          if (clonedContent) {
-            clonedContent.style.width = "800px"
-            clonedContent.style.margin = "0"
-            clonedContent.style.padding = "20px"
-            clonedContent.style.visibility = "visible"
-          }
-        },
-      })
-
-      console.log("Canvas created with dimensions:", canvas.width, "x", canvas.height)
-
-      // Add the canvas as an image to the PDF
-      const imgData = canvas.toDataURL("image/jpeg", 0.95)
-      const imgWidth = 210 // A4 width in mm
-      const pageHeight = 297 // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width
-
-      // Add image to first page
-      pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, imgHeight)
-
-      // Add additional pages if needed
-      let heightLeft = imgHeight - pageHeight
-      let position = -pageHeight
-
-      while (heightLeft > 0) {
-        pdf.addPage()
-        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight)
-        heightLeft -= pageHeight
-        position -= pageHeight
-      }
-
-      // Add footer to each page
-      const pageCount = pdf.getNumberOfPages()
-      for (let i = 1; i <= pageCount; i++) {
-        pdf.setPage(i)
-        pdf.setFontSize(10)
-        pdf.setTextColor(150, 150, 150)
-        pdf.text(`Generated by docfa.st - Page ${i} of ${pageCount}`, imgWidth / 2, pageHeight - 10, {
-          align: "center",
-        })
-      }
-
-      console.log("PDF created successfully with", pageCount, "pages")
+      console.log("Canvas-based PDF created successfully with", pageCount, "pages")
       return pdf.output("blob")
     } finally {
       // Clean up
