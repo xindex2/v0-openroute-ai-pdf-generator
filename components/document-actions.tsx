@@ -8,6 +8,7 @@ import MissingFieldsForm from "@/components/missing-fields-form"
 import ThemeCustomizer from "@/components/theme-customizer"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { generatePdf, generateHtml, generateTextDocument, printDocument } from "@/lib/simplified-export"
 
 interface DocumentActionsProps {
   onGenerateAndDownloadPdf: () => void
@@ -23,7 +24,7 @@ interface DocumentActionsProps {
   exportFormat: "pdf" | "docx" | "image"
   setExportFormat: (format: "pdf" | "docx" | "image") => void
   documentRef?: React.RefObject<HTMLDivElement>
-  onMissingFieldsSubmit: () => void
+  onMissingFieldsSubmit?: () => void
 }
 
 export default function DocumentActions({
@@ -44,6 +45,68 @@ export default function DocumentActions({
 }: DocumentActionsProps) {
   const [exportError, setExportError] = useState<string | null>(null)
   const [isGeneratingLocal, setIsGeneratingLocal] = useState(false)
+
+  // Function to handle PDF export directly
+  const handlePdfExport = async () => {
+    try {
+      setExportError(null)
+      setIsGeneratingLocal(true)
+
+      if (!documentRef?.current) {
+        throw new Error("Document element not found")
+      }
+
+      // Generate PDF using the improved function
+      const pdfBlob = await generatePdf(documentRef.current)
+
+      // Download the PDF
+      const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "document.pdf"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      setTimeout(() => URL.revokeObjectURL(url), 100)
+    } catch (error) {
+      console.error("Error generating PDF:", error)
+      setExportError(`Failed to generate PDF: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setIsGeneratingLocal(false)
+    }
+  }
+
+  // Function to handle DOCX export directly
+  const handleDocxExport = async () => {
+    try {
+      setExportError(null)
+      setIsGeneratingLocal(true)
+
+      if (!documentRef?.current) {
+        throw new Error("Document element not found")
+      }
+
+      // Generate DOCX using the improved function
+      const docxBlob = await generateTextDocument(documentRef.current)
+
+      // Download the DOCX
+      const url = URL.createObjectURL(docxBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "document.docx"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      setTimeout(() => URL.revokeObjectURL(url), 100)
+    } catch (error) {
+      console.error("Error generating DOCX:", error)
+      setExportError(`Failed to generate DOCX: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setIsGeneratingLocal(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -76,7 +139,7 @@ export default function DocumentActions({
               fields={missingFields}
               values={fieldValues}
               onChange={onFieldChange}
-              onSubmit={onMissingFieldsSubmit}
+              onSubmit={onMissingFieldsSubmit || (() => {})}
               isSubmitting={isGeneratingLocal}
             />
           </Card>
@@ -97,38 +160,7 @@ export default function DocumentActions({
                   )}
 
                   <Button
-                    onClick={() => {
-                      try {
-                        setExportError(null)
-                        setIsGeneratingLocal(true)
-
-                        if (!documentRef?.current) {
-                          throw new Error("Document element not found")
-                        }
-
-                        // Get text content
-                        const content = documentRef.current.textContent || "Document content"
-
-                        // Create a simple text file with PDF extension
-                        const blob = new Blob([content], { type: "application/pdf" })
-                        const url = URL.createObjectURL(blob)
-                        const link = document.createElement("a")
-                        link.href = url
-                        link.download = "document.pdf"
-                        document.body.appendChild(link)
-                        link.click()
-                        document.body.removeChild(link)
-
-                        setTimeout(() => URL.revokeObjectURL(url), 100)
-                      } catch (error) {
-                        console.error("Error generating PDF:", error)
-                        setExportError(
-                          `Failed to generate PDF: ${error instanceof Error ? error.message : String(error)}`,
-                        )
-                      } finally {
-                        setIsGeneratingLocal(false)
-                      }
-                    }}
+                    onClick={handlePdfExport}
                     disabled={isGeneratingLocal}
                     className="bg-gradient-green hover:opacity-90 text-white"
                   >
@@ -137,40 +169,7 @@ export default function DocumentActions({
                   </Button>
 
                   <Button
-                    onClick={() => {
-                      try {
-                        setExportError(null)
-                        setIsGeneratingLocal(true)
-
-                        if (!documentRef?.current) {
-                          throw new Error("Document element not found")
-                        }
-
-                        // Get text content
-                        const content = documentRef.current.textContent || "Document content"
-
-                        // Create a simple text file with DOCX extension
-                        const blob = new Blob([content], {
-                          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        })
-                        const url = URL.createObjectURL(blob)
-                        const link = document.createElement("a")
-                        link.href = url
-                        link.download = "document.docx"
-                        document.body.appendChild(link)
-                        link.click()
-                        document.body.removeChild(link)
-
-                        setTimeout(() => URL.revokeObjectURL(url), 100)
-                      } catch (error) {
-                        console.error("Error generating DOCX:", error)
-                        setExportError(
-                          `Failed to generate DOCX: ${error instanceof Error ? error.message : String(error)}`,
-                        )
-                      } finally {
-                        setIsGeneratingLocal(false)
-                      }
-                    }}
+                    onClick={handleDocxExport}
                     disabled={isGeneratingLocal}
                     className="bg-gradient-green hover:opacity-90 text-white"
                   >
@@ -228,39 +227,11 @@ export default function DocumentActions({
                           throw new Error("Document element not found")
                         }
 
-                        // Get HTML content
-                        const content = documentRef.current.innerHTML || "<p>Document content</p>"
+                        // Generate HTML using the improved function
+                        const htmlBlob = generateHtml(documentRef.current)
 
-                        // Create a complete HTML document
-                        const htmlDocument = `
-                          <!DOCTYPE html>
-                          <html>
-                          <head>
-                            <meta charset="utf-8">
-                            <title>Document</title>
-                            <style>
-                              body {
-                                font-family: Arial, sans-serif;
-                                line-height: 1.6;
-                                color: #333;
-                                max-width: 800px;
-                                margin: 0 auto;
-                                padding: 20px;
-                              }
-                              h1, h2, h3, h4, h5, h6 {
-                                color: #2ECC71;
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            ${content}
-                          </body>
-                          </html>
-                        `
-
-                        // Create a blob with the HTML content
-                        const blob = new Blob([htmlDocument], { type: "text/html" })
-                        const url = URL.createObjectURL(blob)
+                        // Download the HTML
+                        const url = URL.createObjectURL(htmlBlob)
                         const link = document.createElement("a")
                         link.href = url
                         link.download = "document.html"
@@ -295,49 +266,8 @@ export default function DocumentActions({
                           throw new Error("Document element not found")
                         }
 
-                        // Create a new window for printing
-                        const printWindow = window.open("", "_blank")
-                        if (!printWindow) {
-                          throw new Error("Could not open print window. Please allow popups.")
-                        }
-
-                        // Write content to the new window
-                        printWindow.document.write(`
-                          <!DOCTYPE html>
-                          <html>
-                          <head>
-                            <title>Print Document</title>
-                            <style>
-                              body {
-                                font-family: Arial, sans-serif;
-                                line-height: 1.6;
-                                color: #333;
-                                max-width: 800px;
-                                margin: 0 auto;
-                                padding: 20px;
-                              }
-                              h1, h2, h3, h4, h5, h6 {
-                                color: #2ECC71;
-                              }
-                              @media print {
-                                body { max-width: 100%; }
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            ${documentRef.current.innerHTML}
-                            <script>
-                              window.onload = function() {
-                                setTimeout(function() {
-                                  window.print();
-                                  window.close();
-                                }, 250);
-                              };
-                            </script>
-                          </body>
-                          </html>
-                        `)
-                        printWindow.document.close()
+                        // Use the improved print function
+                        printDocument(documentRef.current)
                       } catch (error) {
                         console.error("Error printing document:", error)
                         setExportError(`Failed to print: ${error instanceof Error ? error.message : String(error)}`)

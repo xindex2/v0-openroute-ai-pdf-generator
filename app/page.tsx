@@ -39,6 +39,17 @@ function TypingAnimation({ text, speed = 50 }: { text: string; speed?: number })
   )
 }
 
+// Add the PulsingDots component
+function PulsingDots() {
+  return (
+    <div className="flex space-x-2 justify-center items-center">
+      <div className="h-2 w-2 bg-todo-green rounded-full animate-pulse"></div>
+      <div className="h-2 w-2 bg-todo-green rounded-full animate-pulse delay-150"></div>
+      <div className="h-2 w-2 bg-todo-green rounded-full animate-pulse delay-300"></div>
+    </div>
+  )
+}
+
 export default function Home() {
   // Document state
   const [documents, setDocuments] = useState<Document[]>([])
@@ -659,7 +670,7 @@ export default function Home() {
     styledContent = styledContent.replace(/<table([^>]*)>/gi, '<table$1 class="w-full border-collapse mb-6">')
     styledContent = styledContent.replace(
       /<th([^>]*)>(.*?)<\/th>/gi,
-      '<th$1 class="bg-todo-green text-white p-3 text-left">$2</th>',
+      '<th$1 class="bg-todo-green text-white p-3 text-left">',
     )
     styledContent = styledContent.replace(
       /<td([^>]*)>(.*?)<\/td>/gi,

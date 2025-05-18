@@ -1,7 +1,5 @@
 "use client"
 
-import { jsPDF } from "jspdf"
-import html2canvas from "html2canvas"
 import {
   Document,
   Packer,
@@ -13,7 +11,101 @@ import {
   TableCell,
   BorderStyle,
   AlignmentType,
+  ShadingType,
+  WidthType,
 } from "docx"
+import html2canvas from "html2canvas"
+import { jsPDF } from "jspdf"
+
+// Helper function to get text content from HTML element
+const getTextContent = (element: HTMLElement): string => {
+  return element.innerText || element.textContent || ""
+}
+
+// Helper function to get all text content from document
+const getAllTextContent = (element: HTMLElement): string => {
+  return Array.from(element.querySelectorAll("h1, h2, h3, h4, h5, h6, p, li, td, th"))
+    .map((el) => el.textContent)
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+// Helper to extract HTML structure
+const extractStructure = (element: HTMLElement) => {
+  const structure: Array<{ type: string; level?: number; content: string; children?: any[] }> = []
+
+  // Process headings, paragraphs, lists
+  Array.from(element.children).forEach((child) => {
+    const tagName = child.tagName.toLowerCase()
+
+    if (tagName.match(/^h[1-6]$/)) {
+      const level = Number.parseInt(tagName.substring(1))
+      structure.push({
+        type: "heading",
+        level,
+        content: child.textContent || "",
+      })
+    } else if (tagName === "p") {
+      structure.push({
+        type: "paragraph",
+        content: child.textContent || "",
+      })
+    } else if (tagName === "ul" || tagName === "ol") {
+      const items = Array.from(child.querySelectorAll("li")).map((li) => li.textContent || "")
+      structure.push({
+        type: tagName,
+        content: "",
+        children: items.map((item) => ({ type: "li", content: item })),
+      })
+    } else if (tagName === "table") {
+      const rows: string[][] = []
+      const headerRow: string[] = []
+
+      // Extract table headers
+      Array.from(child.querySelectorAll("th")).forEach((th) => {
+        headerRow.push(th.textContent || "")
+      })
+
+      if (headerRow.length > 0) {
+        rows.push(headerRow)
+      }
+
+      // Extract table rows
+      Array.from(child.querySelectorAll("tr")).forEach((tr) => {
+        const cells = Array.from(tr.querySelectorAll("td")).map((td) => td.textContent || "")
+        if (cells.length > 0) {
+          rows.push(cells)
+        }
+      })
+
+      structure.push({
+        type: "table",
+        content: "",
+        children: rows,
+      })
+    } else if (child.children.length > 0) {
+      // Recursively process nested elements
+      const nestedStructure = extractStructure(child as HTMLElement)
+      structure.push(...nestedStructure)
+    }
+  })
+
+  return structure
+}
+
+// Simple saveAs implementation to replace file-saver dependency
+function saveAs(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  setTimeout(() => {
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
 
 // Print function - this is the most reliable
 export function printDocument(contentElement: HTMLElement): void {
@@ -97,6 +189,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
     tempDiv.style.backgroundColor = "#ffffff"
     tempDiv.style.width = "800px"
     tempDiv.style.color = "#333333"
+    tempDiv.style.boxSizing = "border-box"
 
     // Add styling for headings and tables
     const styleElement = document.createElement("style")
@@ -105,6 +198,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
       table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
       th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
       td { padding: 8px; border: 1px solid #ddd; }
+      img { max-width: 100%; height: auto; }
     `
     tempDiv.appendChild(styleElement)
 
@@ -121,17 +215,20 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
         format: "a4",
       })
 
-      // Use html2canvas with simplified options
+      // Use html2canvas with improved options
       const canvas = await html2canvas(tempDiv, {
-        scale: 2,
+        scale: 2, // Higher scale for better quality
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        allowTaint: true, // Allow cross-origin images
         onclone: (clonedDoc) => {
-          // Additional styling for the cloned document if needed
+          // Additional styling for the cloned document
           const clonedContent = clonedDoc.querySelector("div")
           if (clonedContent) {
             clonedContent.style.width = "800px"
+            clonedContent.style.margin = "0"
+            clonedContent.style.padding = "20px"
           }
         },
       })
@@ -167,7 +264,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
         })
       }
 
-      console.log("PDF created successfully")
+      console.log("PDF created successfully with", pageCount, "pages")
       return pdf.output("blob")
     } finally {
       // Clean up
@@ -368,10 +465,10 @@ function generateFallbackImage(contentElement: HTMLElement): Promise<Blob> {
   })
 }
 
-// Completely rewritten DOCX export function
+// Improved DOCX export function with better styling support
 export async function generateTextDocument(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting DOCX generation with simplified approach...")
+    console.log("Starting DOCX generation with improved styling...")
 
     // Create a new Document
     const doc = new Document({
@@ -400,6 +497,9 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
             }),
           ],
           heading: HeadingLevel.HEADING_1,
+          spacing: {
+            after: 200, // Add space after the title
+          },
         }),
       )
     }
@@ -427,6 +527,10 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
               }),
             ],
             heading: headingLevel,
+            spacing: {
+              before: 240,
+              after: 120,
+            },
           }),
         )
       } else if (element.tagName === "P") {
@@ -435,8 +539,12 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
             children: [
               new TextRun({
                 text: element.textContent || "",
+                size: 24, // 12pt
               }),
             ],
+            spacing: {
+              after: 120, // Space after paragraph
+            },
           }),
         )
       } else if (element.tagName === "UL" || element.tagName === "OL") {
@@ -447,10 +555,14 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
               children: [
                 new TextRun({
                   text: `${element.tagName === "OL" ? (index + 1) + "." : "•"} ${item.textContent || ""}`,
+                  size: 24, // 12pt
                 }),
               ],
               indent: {
                 left: 720, // 0.5 inches in twips
+              },
+              spacing: {
+                after: 80, // Space after list item
               },
             }),
           )
@@ -474,6 +586,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
                           text: cell.textContent || "",
                           bold: cell.tagName === "TH",
                           color: cell.tagName === "TH" ? "FFFFFF" : "000000",
+                          size: 24, // 12pt
                         }),
                       ],
                     }),
@@ -482,8 +595,11 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
                     cell.tagName === "TH"
                       ? {
                           fill: "2ECC71", // Green color
+                          type: ShadingType.SOLID,
+                          color: "auto",
                         }
                       : undefined,
+                  verticalAlign: "center",
                 }),
               )
             })
@@ -499,7 +615,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
                 rows: tableRows,
                 width: {
                   size: 100,
-                  type: "pct",
+                  type: WidthType.PERCENTAGE,
                 },
                 borders: {
                   top: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
@@ -508,6 +624,16 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
                   right: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
                   insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
                   insideVertical: { style: BorderStyle.SINGLE, size: 1, color: "auto" },
+                },
+              }),
+            )
+
+            // Add space after table
+            children.push(
+              new Paragraph({
+                children: [],
+                spacing: {
+                  after: 200,
                 },
               }),
             )
@@ -537,6 +663,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
           children: [
             new TextRun({
               text,
+              size: 24, // 12pt
             }),
           ],
         }),
@@ -554,6 +681,9 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
           }),
         ],
         alignment: AlignmentType.CENTER,
+        spacing: {
+          before: 400, // Space before footer
+        },
       }),
     )
 
@@ -586,13 +716,13 @@ export function generateHtml(contentElement: HTMLElement): Blob {
         <title>Exported Document</title>
         <style>
           body {
-            font-family: Arial, sans-serif;
+            font-family: ${contentElement.style.fontFamily || "Arial, sans-serif"};
             line-height: 1.6;
-            color: #333;
+            color: ${contentElement.style.color || "#333"};
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #ffffff;
+            background-color: ${contentElement.style.backgroundColor || "#ffffff"};
           }
           h1, h2, h3, h4, h5, h6 {
             margin-top: 1.5em;
@@ -635,5 +765,28 @@ export function generateHtml(contentElement: HTMLElement): Blob {
   } catch (error) {
     console.error("Error in HTML generation:", error)
     throw error
+  }
+}
+
+// Plain text export function
+export const generateTXT = (element: HTMLElement, filename: string): void => {
+  try {
+    const text = getAllTextContent(element)
+    const blob = new Blob([text], { type: "text/plain" })
+
+    // Use our own saveAs implementation
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    setTimeout(() => {
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    }, 100)
+  } catch (error) {
+    console.error("Error generating TXT:", error)
+    alert("Failed to generate TXT. Please try again.")
   }
 }
