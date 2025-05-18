@@ -89,6 +89,17 @@ export function printDocument(contentElement: HTMLElement): void {
             background-color: #2ECC71;
             color: white;
           }
+          .placeholder {
+            background-color: #FFEB3B;
+            padding: 2px 4px;
+            border-radius: 2px;
+          }
+          .transaction-details {
+            background-color: #E3F2FD;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+          }
           @media print {
             body { padding: 0; margin: 0; }
           }
@@ -112,10 +123,10 @@ export function printDocument(contentElement: HTMLElement): void {
   }
 }
 
-// Completely rewritten PDF export function that creates a text-based PDF
+// Improved PDF export function that creates a text-based PDF with background colors
 export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting text-based PDF generation...")
+    console.log("Starting text-based PDF generation with background colors...")
 
     // Create a new jsPDF instance
     const pdf = new jsPDF({
@@ -129,7 +140,9 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
     tempDiv.innerHTML = contentElement.innerHTML
 
     // Process placeholder spans to ensure they have proper styling
-    const placeholderSpans = tempDiv.querySelectorAll("span[class*='bg-yellow']")
+    const placeholderSpans = tempDiv.querySelectorAll(
+      "span[class*='bg-yellow'], span[style*='background-color: #FFEB3B']",
+    )
     placeholderSpans.forEach((span) => {
       // Mark placeholders for special handling
       span.setAttribute("data-placeholder", "true")
@@ -198,27 +211,18 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
         const text = element.textContent || ""
 
         // Check for placeholders in this paragraph
-        const hasPlaceholders = element.querySelector('[data-placeholder="true"]')
+        const placeholders = element.querySelectorAll('[data-placeholder="true"]')
 
-        if (hasPlaceholders) {
-          // Handle paragraphs with placeholders
-          const placeholders = element.querySelectorAll('[data-placeholder="true"]')
-          const plainText = text
+        if (placeholders.length > 0) {
+          // Handle paragraphs with placeholders by drawing background rectangles
+          // This is a simplified approach - for complex documents with mixed formatting,
+          // we'd need a more sophisticated approach to handle inline highlighting
 
-          // Highlight placeholders in yellow
-          placeholders.forEach((placeholder) => {
-            const placeholderText = placeholder.textContent || ""
-            pdf.setFillColor(255, 235, 59) // Yellow
+          // Draw a yellow background for the entire paragraph as a simplification
+          pdf.setFillColor(255, 235, 59) // Yellow
+          pdf.rect(18, yPos - 5, 174, 10, "F")
 
-            // Calculate position for highlighting
-            const beforeText = plainText.split(placeholderText)[0]
-            const textWidth = pdf.getTextWidth(beforeText)
-            const placeholderWidth = pdf.getTextWidth(placeholderText)
-
-            // We'll handle this when we implement the text
-          })
-
-          // Just output the text normally for now
+          // Then add the text on top
           const lines = pdf.splitTextToSize(text, 170)
           pdf.text(lines, 20, yPos)
           yPos += lines.length * 7
@@ -237,6 +241,15 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
           const prefix = tagName === "ul" ? "• " : `${itemNumber}. `
           itemNumber++
 
+          // Check if this list item has placeholders
+          const hasPlaceholders = item.querySelector('[data-placeholder="true"]')
+
+          if (hasPlaceholders) {
+            // Draw yellow background for items with placeholders
+            pdf.setFillColor(255, 235, 59) // Yellow
+            pdf.rect(23, yPos - 5, 167, 10, "F")
+          }
+
           const lines = pdf.splitTextToSize(prefix + itemText, 160)
 
           // Check if we need a new page
@@ -253,6 +266,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
           // Use jsPDF-AutoTable for better table support
           const tableData: string[][] = []
           const tableColumns: string[] = []
+          const tableCellStyles: any[] = []
 
           // Get header row
           const headerRow = element.querySelector("thead tr")
@@ -267,12 +281,24 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
           const rows = element.querySelectorAll("tbody tr")
           rows.forEach((row) => {
             const rowData: string[] = []
+            const cellStyles: any[] = []
+
             const cells = row.querySelectorAll("td")
             cells.forEach((cell) => {
               rowData.push(cell.textContent || "")
+
+              // Check if cell has placeholders
+              const hasPlaceholders = cell.querySelector('[data-placeholder="true"]')
+              if (hasPlaceholders) {
+                cellStyles.push({ fillColor: [255, 235, 59] }) // Yellow background
+              } else {
+                cellStyles.push({})
+              }
             })
+
             if (rowData.length > 0) {
               tableData.push(rowData)
+              tableCellStyles.push(cellStyles)
             }
           })
 
@@ -293,6 +319,15 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
               styles: {
                 overflow: "linebreak",
                 cellPadding: 3,
+              },
+              // Apply custom styles to cells with placeholders
+              willDrawCell: (data) => {
+                if (data.section === "body" && tableCellStyles[data.row] && tableCellStyles[data.row][data.column]) {
+                  const cellStyle = tableCellStyles[data.row][data.column]
+                  if (cellStyle.fillColor) {
+                    data.cell.styles.fillColor = cellStyle.fillColor
+                  }
+                }
               },
             })
 
@@ -327,17 +362,31 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
           element.className.includes("bg-blue") ||
           element.className.includes("bg-sky") ||
           element.className.includes("bg-slate") ||
-          element.style.backgroundColor?.includes("rgb(227, 242, 253)") // #E3F2FD
+          element.style.backgroundColor?.includes("rgb(227, 242, 253)") || // #E3F2FD
+          element.hasAttribute("data-transaction-details")
 
         if (hasBlueBackground) {
+          // Get the content height to determine rectangle size
+          const paragraphs = element.querySelectorAll("p")
+          let contentHeight = 0
+
+          if (paragraphs.length > 0) {
+            contentHeight = paragraphs.length * 10 // Approximate height based on number of paragraphs
+          } else {
+            // If no paragraphs, estimate based on text length
+            const text = element.textContent || ""
+            const lines = pdf.splitTextToSize(text, 160)
+            contentHeight = lines.length * 7
+          }
+
           // Draw a blue background rectangle
           pdf.setFillColor(227, 242, 253) // #E3F2FD - light blue
-          pdf.rect(15, yPos - 5, 180, 40, "F")
+          pdf.rect(15, yPos - 5, 180, contentHeight + 15, "F")
 
           // Process the content inside the div
-          const paragraphs = element.querySelectorAll("p")
+          const divParagraphs = element.querySelectorAll("p")
 
-          paragraphs.forEach((p) => {
+          divParagraphs.forEach((p) => {
             const text = p.textContent || ""
             const lines = pdf.splitTextToSize(text, 160)
             pdf.text(lines, 20, yPos)
@@ -345,7 +394,7 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
           })
 
           // If no paragraphs, just use the text content
-          if (paragraphs.length === 0) {
+          if (divParagraphs.length === 0) {
             const text = element.textContent || ""
             const lines = pdf.splitTextToSize(text, 160)
             pdf.text(lines, 20, yPos)
@@ -400,6 +449,18 @@ export async function generatePdfWithCanvas(contentElement: HTMLElement): Promis
       th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
       td { padding: 8px; border: 1px solid #ddd; }
       img { max-width: 100%; height: auto; }
+      .placeholder, span[class*='bg-yellow'] { 
+        background-color: #FFEB3B; 
+        color: #000000; 
+        padding: 2px 4px; 
+        border-radius: 4px; 
+      }
+      div[class*='bg-blue'], div[class*='bg-sky'], div[class*='bg-slate'] { 
+        background-color: #E3F2FD; 
+        padding: 15px; 
+        border-radius: 8px; 
+        margin-bottom: 20px; 
+      }
     `
     tempDiv.appendChild(styleElement)
 
@@ -546,6 +607,18 @@ export async function generateImage(contentElement: HTMLElement): Promise<Blob> 
       table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
       th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
       td { padding: 8px; border: 1px solid #ddd; }
+      .placeholder, span[class*='bg-yellow'] { 
+        background-color: #FFEB3B; 
+        color: #000000; 
+        padding: 2px 4px; 
+        border-radius: 4px; 
+      }
+      div[class*='bg-blue'], div[class*='bg-sky'], div[class*='bg-slate'] { 
+        background-color: #E3F2FD; 
+        padding: 15px; 
+        border-radius: 8px; 
+        margin-bottom: 20px; 
+      }
     `
     tempDiv.appendChild(styleElement)
 
@@ -972,6 +1045,18 @@ export function generateHtml(contentElement: HTMLElement): Blob {
           th {
             background-color: #2ECC71;
             color: white;
+          }
+          .placeholder, span[class*='bg-yellow'] { 
+            background-color: #FFEB3B; 
+            color: #000000; 
+            padding: 2px 4px; 
+            border-radius: 4px; 
+          }
+          div[class*='bg-blue'], div[class*='bg-sky'], div[class*='bg-slate'] { 
+            background-color: #E3F2FD; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 20px; 
           }
           footer {
             margin-top: 40px;

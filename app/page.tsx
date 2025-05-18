@@ -222,17 +222,21 @@ export default function Home() {
               streamContainerRef.current.innerHTML = streamedContent
             }
 
-            // Update the current version in real-time
-            if (activeDocumentId) {
-              setDocumentVersions((prev) => ({
+            // Force a re-render to update the UI
+            // This is important for real-time streaming display
+            setDocumentVersions((prev) => {
+              const newVersions = {
                 ...prev,
-                [activeDocumentId]: [streamedContent],
-              }))
-              setCurrentVersionIndices((prev) => ({
-                ...prev,
-                [activeDocumentId]: 0,
-              }))
-            }
+                [activeDocumentId || "temp"]: [streamedContent],
+              }
+              return newVersions
+            })
+
+            // Also update the current version index
+            setCurrentVersionIndices((prev) => ({
+              ...prev,
+              [activeDocumentId || "temp"]: 0,
+            }))
           },
           abortControllerRef.current.signal,
         )
@@ -846,8 +850,8 @@ export default function Home() {
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-white">
-          <div className="border-b p-2 flex flex-wrap items-center justify-between bg-white">
+        <div className="flex-1 flex flex-col overflow-hidden bg-mint">
+          <div className="border-b p-2 flex flex-wrap items-center justify-between bg-mint">
             <div className="flex items-center gap-2 order-1 md:order-1 w-full md:w-auto mb-2 md:mb-0">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
                 <TabsList className="w-full md:w-auto grid grid-cols-2">
@@ -947,7 +951,11 @@ export default function Home() {
                           </div>
                           <div className="border p-4 rounded bg-white">
                             {finalContentRef.current ? (
-                              <div ref={streamContainerRef} />
+                              <div
+                                ref={streamContainerRef}
+                                className="document-preview"
+                                dangerouslySetInnerHTML={{ __html: finalContentRef.current }}
+                              />
                             ) : (
                               <div className="flex items-center justify-center py-8">
                                 <div className="animate-pulse flex space-x-2">
