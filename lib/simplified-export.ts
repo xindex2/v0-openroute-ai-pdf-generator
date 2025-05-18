@@ -174,10 +174,10 @@ export function printDocument(contentElement: HTMLElement): void {
   }
 }
 
-// Completely rewritten PDF export function
+// Completely rewritten PDF export function with improved rendering
 export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
   try {
-    console.log("Starting PDF generation with simplified approach...")
+    console.log("Starting PDF generation with improved approach...")
 
     // Create a clean clone of the content in a temporary div
     const tempDiv = document.createElement("div")
@@ -204,10 +204,15 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
 
     // Temporarily add to document to render
     tempDiv.style.position = "absolute"
-    tempDiv.style.left = "-9999px"
+    tempDiv.style.left = "0"
+    tempDiv.style.top = "0"
+    tempDiv.style.visibility = "hidden"
     document.body.appendChild(tempDiv)
 
     try {
+      // Wait a moment for any fonts or resources to load
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
       // Create a new PDF document
       const pdf = new jsPDF({
         orientation: "portrait",
@@ -219,9 +224,11 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
       const canvas = await html2canvas(tempDiv, {
         scale: 2, // Higher scale for better quality
         useCORS: true,
-        logging: false,
+        logging: true, // Enable logging for debugging
         backgroundColor: "#ffffff",
         allowTaint: true, // Allow cross-origin images
+        windowWidth: 800,
+        windowHeight: tempDiv.scrollHeight,
         onclone: (clonedDoc) => {
           // Additional styling for the cloned document
           const clonedContent = clonedDoc.querySelector("div")
@@ -229,9 +236,12 @@ export async function generatePdf(contentElement: HTMLElement): Promise<Blob> {
             clonedContent.style.width = "800px"
             clonedContent.style.margin = "0"
             clonedContent.style.padding = "20px"
+            clonedContent.style.visibility = "visible"
           }
         },
       })
+
+      console.log("Canvas created with dimensions:", canvas.width, "x", canvas.height)
 
       // Add the canvas as an image to the PDF
       const imgData = canvas.toDataURL("image/jpeg", 0.95)
@@ -492,7 +502,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
             new TextRun({
               text: titleElement.textContent,
               bold: true,
-              color: "2ECC71", // Green color
+              color: "2ECC71", // Green color - without # prefix for docx
               size: 32, // 16pt
             }),
           ],
@@ -522,7 +532,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
               new TextRun({
                 text: element.textContent || "",
                 bold: true,
-                color: "2ECC71", // Green color
+                color: "2ECC71", // Green color - without # prefix for docx
                 size: 28 - level * 2, // Decrease size for deeper headings
               }),
             ],
@@ -594,7 +604,7 @@ export async function generateTextDocument(contentElement: HTMLElement): Promise
                   shading:
                     cell.tagName === "TH"
                       ? {
-                          fill: "2ECC71", // Green color
+                          fill: "2ECC71", // Green color - without # prefix for docx
                           type: ShadingType.SOLID,
                           color: "auto",
                         }

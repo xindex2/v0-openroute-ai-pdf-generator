@@ -56,8 +56,29 @@ export default function DocumentActions({
         throw new Error("Document element not found")
       }
 
+      // Create a clean clone of the content
+      const contentClone = document.createElement("div")
+      contentClone.innerHTML = documentRef.current.innerHTML
+
+      // Apply basic styling
+      contentClone.style.fontFamily = "Arial, sans-serif"
+      contentClone.style.padding = "20px"
+      contentClone.style.backgroundColor = "#ffffff"
+      contentClone.style.width = "800px"
+      contentClone.style.color = "#333333"
+
+      // Add styling for headings and tables
+      const styleElement = document.createElement("style")
+      styleElement.textContent = `
+        h1, h2, h3, h4, h5, h6 { color: #2ECC71; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th { background-color: #2ECC71; color: white; padding: 8px; text-align: left; }
+        td { padding: 8px; border: 1px solid #ddd; }
+      `
+      contentClone.appendChild(styleElement)
+
       // Generate PDF using the improved function
-      const pdfBlob = await generatePdf(documentRef.current)
+      const pdfBlob = await generatePdf(contentClone)
 
       // Download the PDF
       const url = URL.createObjectURL(pdfBlob)
@@ -87,8 +108,19 @@ export default function DocumentActions({
         throw new Error("Document element not found")
       }
 
+      // Create a clean clone of the content
+      const contentClone = document.createElement("div")
+      contentClone.innerHTML = documentRef.current.innerHTML
+
+      // Apply basic styling
+      contentClone.style.fontFamily = "Arial, sans-serif"
+      contentClone.style.padding = "20px"
+      contentClone.style.backgroundColor = "#ffffff"
+      contentClone.style.width = "800px"
+      contentClone.style.color = "#333333"
+
       // Generate DOCX using the improved function
-      const docxBlob = await generateTextDocument(documentRef.current)
+      const docxBlob = await generateTextDocument(contentClone)
 
       // Download the DOCX
       const url = URL.createObjectURL(docxBlob)
