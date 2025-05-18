@@ -90,6 +90,12 @@ const config = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      "animation-delay-200": {
+        "animation-delay": "200ms",
+      },
+      "animation-delay-400": {
+        "animation-delay": "400ms",
+      },
       backgroundImage: {
         "gradient-green": "linear-gradient(to right, #2ECC71, #27AE60)",
       },

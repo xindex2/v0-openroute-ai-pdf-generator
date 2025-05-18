@@ -15,6 +15,30 @@ import DocumentList, { type Document } from "@/components/document-list"
 // Update imports to include the new export functions
 import { generatePdf, generateImage, generateHtml, generateTextDocument, printDocument } from "@/lib/simplified-export"
 
+// Add the TypingAnimation component
+function TypingAnimation({ text, speed = 50 }: { text: string; speed?: number }) {
+  const [displayedText, setDisplayedText] = useState("")
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  useEffect(() => {
+    if (currentIndex < text.length) {
+      const timeout = setTimeout(() => {
+        setDisplayedText((prev) => prev + text[currentIndex])
+        setCurrentIndex((prev) => prev + 1)
+      }, speed)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [currentIndex, text, speed])
+
+  return (
+    <span>
+      {displayedText}
+      {currentIndex < text.length && <span className="animate-pulse">|</span>}
+    </span>
+  )
+}
+
 export default function Home() {
   // Document state
   const [documents, setDocuments] = useState<Document[]>([])
@@ -840,10 +864,25 @@ export default function Home() {
                           <div className="mb-4">
                             <h3 className="text-lg font-medium mb-2">Generating Document...</h3>
                             <p className="text-muted-foreground mb-4">
-                              Watch as your document is being created in real-time.
+                              <TypingAnimation
+                                text="Watch as your document is being created in real-time."
+                                speed={50}
+                              />
                             </p>
                           </div>
-                          <div ref={streamContainerRef} className="border p-4 rounded bg-white" />
+                          <div className="border p-4 rounded bg-white">
+                            {finalContentRef.current ? (
+                              <div ref={streamContainerRef} />
+                            ) : (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="animate-pulse flex space-x-2">
+                                  <div className="h-3 w-3 bg-todo-green rounded-full"></div>
+                                  <div className="h-3 w-3 bg-todo-green rounded-full animation-delay-200"></div>
+                                  <div className="h-3 w-3 bg-todo-green rounded-full animation-delay-400"></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
