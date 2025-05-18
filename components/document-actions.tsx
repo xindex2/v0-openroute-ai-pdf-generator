@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { Button } from "@/components/ui/button"
-import { Download, Save, FileText, FileImage, FileIcon as FileWord, Printer } from "lucide-react"
+import { Download, FileText, FileImage, FileIcon as FileWord, Printer, ClipboardList, Palette } from "lucide-react"
 import MissingFieldsForm from "@/components/missing-fields-form"
 import ThemeCustomizer from "@/components/theme-customizer"
 import { Card } from "@/components/ui/card"
@@ -44,15 +44,7 @@ export default function DocumentActions({
 }: DocumentActionsProps) {
   const [exportError, setExportError] = useState<string | null>(null)
 
-  const handleExport = async (exportFn: () => void, type: string) => {
-    try {
-      setExportError(null)
-      await exportFn()
-    } catch (error) {
-      console.error(`Error exporting as ${type}:`, error)
-      setExportError(`Failed to export as ${type}. Please try again.`)
-    }
-  }
+  // Remove the handleExport function entirely as we're now calling the export functions directly
 
   const handlePrint = () => {
     try {
@@ -73,13 +65,22 @@ export default function DocumentActions({
       <Tabs defaultValue="fields">
         <TabsList className="w-full grid grid-cols-3">
           <TabsTrigger value="fields" className="data-[state=active]:bg-gradient-green data-[state=active]:text-white">
-            Fields
+            <span className="flex items-center">
+              <ClipboardList className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Fields</span>
+            </span>
           </TabsTrigger>
           <TabsTrigger value="export" className="data-[state=active]:bg-gradient-green data-[state=active]:text-white">
-            Download
+            <span className="flex items-center">
+              <Download className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Download</span>
+            </span>
           </TabsTrigger>
           <TabsTrigger value="theme" className="data-[state=active]:bg-gradient-green data-[state=active]:text-white">
-            Theme
+            <span className="flex items-center">
+              <Palette className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Theme</span>
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -90,7 +91,7 @@ export default function DocumentActions({
               fields={missingFields}
               values={fieldValues}
               onChange={onFieldChange}
-              onSubmit={() => handleExport(onGenerateAndDownloadPdf, "PDF")}
+              onSubmit={() => onGenerateAndDownloadPdf()}
               isSubmitting={isGenerating}
             />
           </Card>
@@ -98,78 +99,46 @@ export default function DocumentActions({
 
         <TabsContent value="export">
           <Card className="p-4">
-            <h2 className="text-lg font-medium mb-4">Download Options</h2>
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  variant={exportFormat === "pdf" ? "default" : "outline"}
-                  onClick={() => setExportFormat("pdf")}
-                  className={exportFormat === "pdf" ? "bg-gradient-green hover:opacity-90 text-white" : ""}
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  PDF
-                </Button>
-                <Button
-                  variant={exportFormat === "docx" ? "default" : "outline"}
-                  onClick={() => setExportFormat("docx")}
-                  className={exportFormat === "docx" ? "bg-gradient-green hover:opacity-90 text-white" : ""}
-                >
-                  <FileWord className="mr-2 h-4 w-4" />
-                  Text
-                </Button>
-                <Button
-                  variant={exportFormat === "image" ? "default" : "outline"}
-                  onClick={() => setExportFormat("image")}
-                  className={exportFormat === "image" ? "bg-gradient-green hover:opacity-90 text-white" : ""}
-                >
-                  <FileImage className="mr-2 h-4 w-4" />
-                  Image
-                </Button>
-              </div>
-
               <div className="space-y-2">
-                <h3 className="text-sm font-medium">Download Actions</h3>
+                <h3 className="text-sm font-medium">Download Options</h3>
                 <div className="grid grid-cols-1 gap-2">
                   <Button
-                    onClick={() => handleExport(onGenerateAndDownloadPdf, "PDF")}
+                    onClick={onGenerateAndDownloadPdf}
                     disabled={isGenerating}
                     className="bg-gradient-green hover:opacity-90 text-white"
                   >
-                    <Download className="mr-2 h-4 w-4" />
+                    <FileText className="mr-2 h-4 w-4" />
                     {isGenerating ? "Generating..." : "Download as PDF"}
                   </Button>
                   <Button
-                    onClick={() => handleExport(onGenerateAndDownloadImage, "Image")}
+                    onClick={onGenerateAndDownloadDocx}
                     disabled={isGenerating}
                     className="bg-gradient-green hover:opacity-90 text-white"
                   >
-                    <Download className="mr-2 h-4 w-4" />
-                    {isGenerating ? "Generating..." : "Download as Image"}
+                    <FileWord className="mr-2 h-4 w-4" />
+                    {isGenerating ? "Generating..." : "Download as DOCX"}
                   </Button>
                   <Button
-                    onClick={() => handleExport(onGenerateAndDownloadDocx, "Text")}
+                    onClick={onGenerateAndDownloadImage}
                     disabled={isGenerating}
                     className="bg-gradient-green hover:opacity-90 text-white"
                   >
-                    <Download className="mr-2 h-4 w-4" />
-                    {isGenerating ? "Generating..." : "Download as Text"}
-                  </Button>
-                  <Button variant="outline" onClick={() => handleExport(onSaveHtml, "HTML")} disabled={isGenerating}>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save HTML
+                    <FileImage className="mr-2 h-4 w-4" />
+                    {isGenerating ? "Generating..." : "Download as Image"}
                   </Button>
                   <Button variant="outline" onClick={handlePrint} disabled={isGenerating}>
                     <Printer className="mr-2 h-4 w-4" />
                     Print / Save as PDF
                   </Button>
                 </div>
-
-                {exportError && (
-                  <div className="mt-2 p-2 text-sm text-red-500 bg-red-50 border border-red-200 rounded">
-                    {exportError}
-                  </div>
-                )}
               </div>
+
+              {exportError && (
+                <div className="mt-2 p-2 text-sm text-red-500 bg-red-50 border border-red-200 rounded">
+                  {exportError}
+                </div>
+              )}
             </div>
           </Card>
         </TabsContent>

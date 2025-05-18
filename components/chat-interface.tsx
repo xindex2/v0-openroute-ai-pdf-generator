@@ -69,7 +69,7 @@ export default function ChatInterface({
   currentVersion,
   documentId,
   urlPrompt,
-  hasProcessedUrlPrompt,
+  hasProcessedUrlPrompt = false,
   setHasProcessedUrlPrompt,
 }: ChatInterfaceProps) {
   // Load initial messages from localStorage based on documentId
@@ -92,14 +92,24 @@ export default function ChatInterface({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Add these state variables and refs
+  // Add these state variables and refs for typing animation
   const [isTyping, setIsTyping] = useState(false)
   const typingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const typingIndexRef = useRef(0)
+  const [localHasProcessedUrlPrompt, setLocalHasProcessedUrlPrompt] = useState(hasProcessedUrlPrompt)
 
-  // Add this effect to handle URL prompt typing animation
+  // Handle URL prompt typing animation
   useEffect(() => {
-    if (urlPrompt && !hasProcessedUrlPrompt && setHasProcessedUrlPrompt) {
+    // Clear any existing typing animation
+    if (typingIntervalRef.current) {
+      clearTimeout(typingIntervalRef.current)
+      typingIntervalRef.current = null
+    }
+
+    // Check if we have a URL prompt to process
+    if (urlPrompt && !localHasProcessedUrlPrompt) {
+      console.log("Starting typing animation for prompt:", urlPrompt)
+
       // Start typing animation
       setIsTyping(true)
       typingIndexRef.current = 0
@@ -109,31 +119,37 @@ export default function ChatInterface({
           setInput(urlPrompt.substring(0, typingIndexRef.current))
           typingIndexRef.current += 1
 
-          // Continue typing
-          typingIntervalRef.current = setTimeout(typePrompt, 50)
+          // Continue typing with a random delay for a more natural effect
+          const randomDelay = Math.floor(Math.random() * 30) + 30 // 30-60ms
+          typingIntervalRef.current = setTimeout(typePrompt, randomDelay)
         } else {
           // Finished typing
+          console.log("Finished typing animation")
           setIsTyping(false)
-          setHasProcessedUrlPrompt(true)
+          setLocalHasProcessedUrlPrompt(true)
+          if (setHasProcessedUrlPrompt) {
+            setHasProcessedUrlPrompt(true)
+          }
 
-          // Auto-submit after a short delay if configured
-          // Uncomment this if you want auto-submission
-          // setTimeout(() => {
-          //   handleSubmit(new Event('submit') as React.FormEvent)
-          // }, 1000)
+          // Clear the interval
+          if (typingIntervalRef.current) {
+            clearTimeout(typingIntervalRef.current)
+            typingIntervalRef.current = null
+          }
         }
       }
 
-      // Start the typing animation
+      // Start the typing animation after a short delay
       typingIntervalRef.current = setTimeout(typePrompt, 500)
+    }
 
-      return () => {
-        if (typingIntervalRef.current) {
-          clearTimeout(typingIntervalRef.current)
-        }
+    // Cleanup function
+    return () => {
+      if (typingIntervalRef.current) {
+        clearTimeout(typingIntervalRef.current)
       }
     }
-  }, [urlPrompt, hasProcessedUrlPrompt, setHasProcessedUrlPrompt])
+  }, [urlPrompt, localHasProcessedUrlPrompt, setHasProcessedUrlPrompt])
 
   // Add effect to save messages when they change or documentId changes
   useEffect(() => {
@@ -175,10 +191,10 @@ export default function ChatInterface({
     if (!input.trim()) return
 
     // Create a URL-friendly version of the prompt
-    const urlPrompt = encodeURIComponent(input.trim())
+    const urlPrompt = input.trim().replace(/\s+/g, "-").toLowerCase()
 
     // Create the shareable URL
-    const shareUrl = `${window.location.origin}/?prompt=${urlPrompt}`
+    const shareUrl = `${window.location.origin}/${urlPrompt}`
 
     // Copy to clipboard
     navigator.clipboard
@@ -194,7 +210,7 @@ export default function ChatInterface({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isSubmitting) return
+    if (!input.trim() || isSubmitting || isTyping) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -300,8 +316,9 @@ export default function ChatInterface({
                 handleSubmit(e)
               }
             }}
+            disabled={isTyping}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 justify-end">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -323,7 +340,7 @@ export default function ChatInterface({
 
             <Button
               type="submit"
-              disabled={isSubmitting || isGenerating || isTyping}
+              disabled={isSubmitting || isGenerating || isTyping || !input.trim()}
               className="bg-gradient-green hover:opacity-90 text-white"
             >
               {isSubmitting || isGenerating ? (

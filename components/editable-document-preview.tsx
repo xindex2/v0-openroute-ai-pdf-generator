@@ -4,8 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { Card } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Edit, Save, X, Download, FileText, FileImage, FileIcon as FileWord } from "lucide-react"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Edit, Save, X } from "lucide-react"
 
 interface EditableDocumentPreviewProps {
   content: string
@@ -36,54 +35,58 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
   ) => {
     const previewRef = useRef<HTMLDivElement>(null)
     const [isEditing, setIsEditing] = useState(false)
-    const [editedContent, setEditedContent] = useState(content)
     const [textDirection, setTextDirection] = useState<"ltr" | "rtl">("ltr")
 
     // Forward the ref to the parent component
     useImperativeHandle(ref, () => previewRef.current as HTMLDivElement)
 
-    useEffect(() => {
-      if (!isEditing) {
-        setEditedContent(content)
-      }
-    }, [content, isEditing])
-
+    // Detect text direction
     const detectTextDirection = (text: string) => {
-      // Simple detection of RTL scripts - checks for common RTL Unicode character ranges
       const rtlRegex = /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/
       return rtlRegex.test(text) ? "rtl" : "ltr"
     }
 
+    // Render preview content
     useEffect(() => {
-      if (previewRef.current && !isEditing) {
+      if (previewRef.current) {
         try {
           let processedContent = content
 
-          // Replace placeholders with values or highlight missing fields
-          Object.entries(fieldValues).forEach(([field, value]) => {
-            if (value) {
-              const regex = new RegExp(`\\[${field}\\]`, "g")
-              processedContent = processedContent.replace(regex, value)
-            }
-          })
+          // Only apply field values and highlighting when not editing
+          if (!isEditing) {
+            // Replace placeholders with values
+            Object.entries(fieldValues).forEach(([field, value]) => {
+              if (value) {
+                const regex = new RegExp(`\\[${field}\\]`, "g")
+                processedContent = processedContent.replace(regex, value)
+              }
+            })
 
-          // Highlight remaining placeholders
-          processedContent = processedContent.replace(
-            /\[(.*?)\]/g,
-            '<span class="bg-yellow-200 text-black px-1 rounded">[$1]</span>',
-          )
+            // Highlight remaining placeholders
+            processedContent = processedContent.replace(
+              /\[(.*?)\]/g,
+              '<span class="bg-yellow-200 text-black px-1 rounded">[$1]</span>',
+            )
+          }
 
-          // Remove any \`\`\`html and \`\`\` markers that might be in the content
+          // Clean up markdown markers
           processedContent = processedContent.replace(/```html/g, "")
           processedContent = processedContent.replace(/```/g, "")
 
-          // Detect text direction from content
+          // Detect text direction
           const detectedDirection = detectTextDirection(processedContent)
           setTextDirection(detectedDirection)
 
           // Apply text direction to the preview
           previewRef.current.dir = detectedDirection
-          previewRef.current.innerHTML = processedContent
+
+          // Only update the innerHTML if we're not editing (to avoid cursor jumps)
+          if (!isEditing || !previewRef.current.isContentEditable) {
+            previewRef.current.innerHTML = processedContent
+          }
+
+          // Make editable when in edit mode
+          previewRef.current.contentEditable = isEditing ? "true" : "false"
         } catch (error) {
           console.error("Error rendering document preview:", error)
           previewRef.current.innerHTML = `<div class="p-4 text-red-500">Error rendering document: ${
@@ -93,152 +96,81 @@ const EditableDocumentPreview = forwardRef<HTMLDivElement, EditableDocumentPrevi
       }
     }, [content, fieldValues, isEditing])
 
-    const handleSaveEdit = () => {
-      // Clean up any \`\`\`html and \`\`\` markers before saving
-      let cleanedContent = editedContent
-      cleanedContent = cleanedContent.replace(/```html/g, "")
-      cleanedContent = cleanedContent.replace(/```/g, "")
+    // Start editing mode
+    const handleStartEditing = () => {
+      setIsEditing(true)
 
-      // Add direction attribute to the root element if it's RTL
-      if (textDirection === "rtl" && !cleanedContent.includes('dir="rtl"')) {
-        // If the content starts with a div or other element, add dir attribute
-        if (cleanedContent.match(/^<[a-z]+[^>]*>/i)) {
-          cleanedContent = cleanedContent.replace(/^<([a-z]+)([^>]*?)>/i, '<$1$2 dir="rtl">')
-        } else {
-          // Otherwise wrap the content in a div with dir attribute
-          cleanedContent = `<div dir="rtl">${cleanedContent}</div>`
+      // Focus after render
+      setTimeout(() => {
+        if (previewRef.current) {
+          previewRef.current.focus()
         }
+      }, 50)
+    }
+
+    // Save edited content
+    const handleSaveEdit = () => {
+      if (previewRef.current) {
+        // Get the current content
+        let newContent = previewRef.current.innerHTML
+
+        // Clean up any markdown markers
+        newContent = newContent.replace(/```html/g, "")
+        newContent = newContent.replace(/```/g, "")
+
+        // Add direction attribute for RTL text
+        if (textDirection === "rtl" && !newContent.includes('dir="rtl"')) {
+          if (newContent.match(/^<[a-z]+[^>]*>/i)) {
+            newContent = newContent.replace(/^<([a-z]+)([^>]*?)>/i, '<$1$2 dir="rtl">')
+          } else {
+            newContent = `<div dir="rtl">${newContent}</div>`
+          }
+        }
+
+        onContentChange(newContent)
       }
 
-      onContentChange(cleanedContent)
       setIsEditing(false)
     }
 
+    // Cancel editing
     const handleCancelEdit = () => {
-      setEditedContent(content)
       setIsEditing(false)
-    }
-
-    const handleGenerateAndDownload = () => {
-      console.log("Generating and downloading document in format:", exportFormat)
-
-      switch (exportFormat) {
-        case "pdf":
-          onGenerateAndDownloadPdf()
-          break
-        case "docx":
-          onGenerateAndDownloadDocx()
-          break
-        case "image":
-          onGenerateAndDownloadImage()
-          break
-        default:
-          console.error("Unknown export format:", exportFormat)
-          // Default to PDF if format is unknown
-          onGenerateAndDownloadPdf()
-      }
     }
 
     return (
       <Card className="h-full overflow-hidden flex flex-col bg-white">
-        <div className="p-2 border-b flex flex-wrap justify-between gap-2 bg-white">
-          <div className="flex gap-2 mb-1 sm:mb-0">
-            {isEditing ? (
-              <>
+        <ScrollArea className="flex-1">
+          <div className="bg-white p-6 relative">
+            {/* Floating edit button in the top-right corner when not editing */}
+            {!isEditing && (
+              <Button
+                size="sm"
+                onClick={handleStartEditing}
+                className="absolute top-2 right-2 z-10 bg-gradient-green hover:opacity-90 text-white"
+              >
+                <Edit className="h-4 w-4 mr-1" /> Edit
+              </Button>
+            )}
+
+            {/* Floating save/cancel buttons when editing */}
+            {isEditing && (
+              <div className="absolute top-2 right-2 z-10 flex gap-2">
                 <Button size="sm" variant="outline" onClick={handleCancelEdit}>
                   <X className="h-4 w-4 mr-1" /> Cancel
                 </Button>
                 <Button size="sm" onClick={handleSaveEdit} className="bg-gradient-green hover:opacity-90 text-white">
                   <Save className="h-4 w-4 mr-1" /> Save
                 </Button>
-              </>
-            ) : (
-              <>
-                <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                  <Edit className="h-4 w-4 mr-1" /> Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setTextDirection(textDirection === "ltr" ? "rtl" : "ltr")}
-                  title={textDirection === "ltr" ? "Switch to Right-to-Left" : "Switch to Left-to-Right"}
-                >
-                  {textDirection === "ltr" ? "LTR" : "RTL"}
-                </Button>
-              </>
+              </div>
             )}
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <ToggleGroup
-              type="single"
-              value={exportFormat}
-              onValueChange={(value) => value && setExportFormat(value as "pdf" | "docx" | "image")}
-              className="w-full sm:w-auto"
-            >
-              <ToggleGroupItem
-                value="pdf"
-                aria-label="PDF"
-                title="PDF"
-                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
-              >
-                <FileText className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="docx"
-                aria-label="DOCX"
-                title="DOCX"
-                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
-              >
-                <FileWord className="h-4 w-4" />
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="image"
-                aria-label="Image"
-                title="Image"
-                className="flex-1 sm:flex-none data-[state=on]:bg-gradient-green data-[state=on]:text-white"
-              >
-                <FileImage className="h-4 w-4" />
-              </ToggleGroupItem>
-            </ToggleGroup>
 
-            <Button
-              size="sm"
-              disabled={isGenerating || !content}
-              className="bg-gradient-green hover:opacity-90 text-white w-full sm:w-auto"
-              onClick={handleGenerateAndDownload}
-            >
-              {isGenerating ? (
-                "Generating..."
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" /> Download
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="bg-white p-6">
-            {isEditing ? (
-              <div
-                ref={previewRef}
-                contentEditable
-                className="outline-none min-h-[500px]"
-                dir={textDirection}
-                dangerouslySetInnerHTML={{ __html: editedContent }}
-                onInput={(e) => {
-                  setEditedContent(e.currentTarget.innerHTML)
-                  // Update direction based on content while editing
-                  const newDirection = detectTextDirection(e.currentTarget.innerHTML)
-                  if (newDirection !== textDirection) {
-                    setTextDirection(newDirection)
-                    e.currentTarget.dir = newDirection
-                  }
-                }}
-              />
-            ) : (
-              <div ref={previewRef} className="document-preview" dir={textDirection} />
-            )}
+            <div
+              ref={previewRef}
+              className={`document-preview ${isEditing ? "outline-none min-h-[500px] border border-dashed border-gray-300 p-2 rounded" : ""}`}
+              dir={textDirection}
+              spellCheck={false}
+            />
           </div>
         </ScrollArea>
       </Card>

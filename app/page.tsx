@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 import { Suspense } from "react"
-import { FileText, MessageSquare, ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
+import { FileText, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { generateDocument, streamDocument, updateDocument } from "@/lib/document-actions"
@@ -45,6 +45,11 @@ export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null)
   const finalContentRef = useRef<string>("")
   const streamContainerRef = useRef<HTMLDivElement>(null)
+
+  // Handle URL parameters for prompts
+  const searchParams = useSearchParams()
+  const urlPrompt = searchParams.get("prompt")
+  const [hasProcessedUrlPrompt, setHasProcessedUrlPrompt] = useState(false)
 
   // Get current document content
   const currentDocumentVersions = activeDocumentId ? documentVersions[activeDocumentId] || [] : []
@@ -677,29 +682,25 @@ export default function Home() {
     }
   }, [])
 
+  // Effect to handle URL prompt parameter
+  useEffect(() => {
+    if (urlPrompt && !hasProcessedUrlPrompt) {
+      console.log("Found URL prompt:", urlPrompt)
+
+      // Create a new document if none exists
+      if (documents.length === 0) {
+        handleCreateDocument()
+      }
+
+      // Make sure we're on the chat tab
+      setActiveTab("chat")
+    }
+  }, [urlPrompt, hasProcessedUrlPrompt, documents.length])
+
   // Toggle sidebar for mobile
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
   }
-
-  // Handle URL parameters for prompts
-  const searchParams = useSearchParams()
-  const urlPrompt = searchParams.get("prompt")
-  const [hasProcessedUrlPrompt, setHasProcessedUrlPrompt] = useState(false)
-
-  // Effect to handle URL prompt parameter
-  useEffect(() => {
-    if (urlPrompt && !hasProcessedUrlPrompt) {
-      // Create a new document if none exists
-      if (!activeDocumentId) {
-        handleCreateDocument()
-      }
-
-      // Set the prompt in the chat interface
-      // We'll implement this in the ChatInterface component
-      setHasProcessedUrlPrompt(true)
-    }
-  }, [urlPrompt, hasProcessedUrlPrompt, activeDocumentId])
 
   return (
     <main className="h-screen flex flex-col">
@@ -715,7 +716,7 @@ export default function Home() {
           {/* Logo, title and toggle button at the top of sidebar */}
           <div className="p-4 flex items-center justify-between border-b bg-sidebar">
             <div className="flex items-center gap-2 overflow-hidden">
-              <Sparkles className="h-5 w-5 text-sidebar-accent flex-shrink-0" />
+              <FileText className="h-5 w-5 text-sidebar-accent flex-shrink-0" />
               {sidebarOpen && (
                 <div className="overflow-hidden">
                   <h1 className="text-xl font-bold text-sidebar-foreground truncate">docfa.st</h1>
