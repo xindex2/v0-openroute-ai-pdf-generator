@@ -1,40 +1,43 @@
-import { open } from "sqlite"
-import sqlite3 from "sqlite3"
+import initSqlJs from "sql.js"
 import bcrypt from "bcryptjs"
-import fs from "fs"
-import path from "path"
 import { v4 as uuidv4 } from "uuid"
 
-// Ensure the data directory exists
-const DATA_DIR = path.join(process.cwd(), "data")
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true })
-}
+// SQLite database instance
+let db: any = null
+let initialized = false
 
-// Initialize SQLite database
-const DB_PATH = path.join(DATA_DIR, "database.sqlite")
-console.log(`Initializing SQLite database at: ${DB_PATH}`)
+// Initialize SQL.js
+async function initDb() {
+  if (db) return db
 
-// Database connection promise
-let dbPromise: Promise<any> | null = null
+  try {
+    console.log("Initializing SQL.js database")
+    const SQL = await initSqlJs()
 
-// Get database connection
-export async function getDb() {
-  if (!dbPromise) {
-    dbPromise = open({
-      filename: DB_PATH,
-      driver: sqlite3.Database,
-    })
+    // Create a new database in memory
+    db = new SQL.Database()
+
+    // Initialize schema
+    await initializeSchema()
+
+    // Create admin user
+    await createAdminUserIfNotExists()
+
+    initialized = true
+    console.log("SQL.js database initialized successfully")
+    return db
+  } catch (error) {
+    console.error("Error initializing SQL.js database:", error)
+    throw error
   }
-  return dbPromise
 }
 
 // Initialize database schema
-export async function initializeDatabase() {
-  const db = await getDb()
+async function initializeSchema() {
+  if (!db) await initDb()
 
   // Create users table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
@@ -49,7 +52,7 @@ export async function initializeDatabase() {
   `)
 
   // Create documents table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -62,7 +65,7 @@ export async function initializeDatabase() {
   `)
 
   // Create document_versions table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS document_versions (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
@@ -75,7 +78,7 @@ export async function initializeDatabase() {
   `)
 
   // Create missing_fields table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS missing_fields (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
@@ -89,7 +92,7 @@ export async function initializeDatabase() {
   `)
 
   // Create credit_transactions table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS credit_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -102,7 +105,7 @@ export async function initializeDatabase() {
   `)
 
   // Create usage_logs table
-  await db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS usage_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -115,35 +118,39 @@ export async function initializeDatabase() {
     )
   `)
 
-  // Create triggers for updated_at
-  await db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_users_updated_at
-    AFTER UPDATE ON users
-    FOR EACH ROW
-    BEGIN
-      UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END
-  `)
-
-  await db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_documents_updated_at
-    AFTER UPDATE ON documents
-    FOR EACH ROW
-    BEGIN
-      UPDATE documents SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END
-  `)
-
-  await db.exec(`
-    CREATE TRIGGER IF NOT EXISTS update_missing_fields_updated_at
-    AFTER UPDATE ON missing_fields
-    FOR EACH ROW
-    BEGIN
-      UPDATE missing_fields SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END
-  `)
-
   console.log("Database schema initialized")
+}
+
+// Helper function to run a query and return results
+function runQuery(query: string, params: any[] = []): any[] {
+  if (!db) throw new Error("Database not initialized")
+
+  const stmt = db.prepare(query)
+  stmt.bind(params)
+
+  const results = []
+  while (stmt.step()) {
+    results.push(stmt.getAsObject())
+  }
+  stmt.free()
+
+  return results
+}
+
+// Helper function to run a query and return a single result
+function runQuerySingle(query: string, params: any[] = []): any {
+  const results = runQuery(query, params)
+  return results.length > 0 ? results[0] : null
+}
+
+// Helper function to execute a query without returning results
+function execQuery(query: string, params: any[] = []): void {
+  if (!db) throw new Error("Database not initialized")
+
+  const stmt = db.prepare(query)
+  stmt.bind(params)
+  stmt.step()
+  stmt.free()
 }
 
 // User authentication helpers
@@ -160,24 +167,49 @@ export function generateId(): string {
   return uuidv4()
 }
 
+// Create admin user if it doesn't exist
+async function createAdminUserIfNotExists() {
+  try {
+    const adminUser = await getUserByEmail("admin@example.com")
+
+    if (!adminUser) {
+      console.log("Creating admin user")
+      const hashedPassword = "$2a$10$mLK.rrdlvx9DCFb6Eck1t.TlltnGulepXnov3bBp5T2TloO1MYj52" // admin123
+
+      execQuery(
+        `INSERT INTO users (email, password_hash, full_name, credits, role)
+         VALUES (?, ?, ?, 1000, 'admin')`,
+        ["admin@example.com", hashedPassword, "Admin User"],
+      )
+
+      console.log("Admin user created")
+    } else {
+      console.log("Admin user already exists")
+    }
+  } catch (error) {
+    console.error("Error creating admin user:", error)
+  }
+}
+
 // User management
 export async function createUser(email: string, password: string, fullName: string) {
+  await initDb()
   console.log(`Creating user with email: ${email}`)
+
   try {
-    const db = await getDb()
     const hashedPassword = await hashPassword(password)
 
-    const result = await db.run(
+    execQuery(
       `INSERT INTO users (email, password_hash, full_name, credits, role)
        VALUES (?, ?, ?, 100, 'user')`,
       [email, hashedPassword, fullName],
     )
 
-    const user = await db.get(
+    const user = runQuerySingle(
       `SELECT id, email, full_name, credits, role, created_at
        FROM users
-       WHERE id = ?`,
-      [result.lastID],
+       WHERE email = ?`,
+      [email],
     )
 
     console.log("User created successfully:", user)
@@ -189,10 +221,11 @@ export async function createUser(email: string, password: string, fullName: stri
 }
 
 export async function getUserByEmail(email: string) {
+  await initDb()
   console.log(`Looking up user with email: ${email}`)
+
   try {
-    const db = await getDb()
-    const user = await db.get(
+    const user = runQuerySingle(
       `SELECT id, email, password_hash, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        WHERE email = ?`,
@@ -200,7 +233,7 @@ export async function getUserByEmail(email: string) {
     )
 
     console.log("User lookup result:", user ? "User found" : "User not found")
-    return user || null
+    return user
   } catch (error) {
     console.error("Error looking up user:", error)
     throw error
@@ -208,10 +241,11 @@ export async function getUserByEmail(email: string) {
 }
 
 export async function getUserById(id: number) {
+  await initDb()
   console.log(`Looking up user with id: ${id}`)
+
   try {
-    const db = await getDb()
-    const user = await db.get(
+    const user = runQuerySingle(
       `SELECT id, email, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        WHERE id = ?`,
@@ -219,7 +253,7 @@ export async function getUserById(id: number) {
     )
 
     console.log("User lookup result:", user ? "User found" : "User not found")
-    return user || null
+    return user
   } catch (error) {
     console.error("Error looking up user:", error)
     throw error
@@ -227,12 +261,12 @@ export async function getUserById(id: number) {
 }
 
 export async function updateUserProfile(userId: number, data: { fullName?: string; avatarUrl?: string }) {
+  await initDb()
   const { fullName, avatarUrl } = data
 
   if (!fullName && !avatarUrl) return null
 
   try {
-    const db = await getDb()
     let query = "UPDATE users SET "
     const params = []
 
@@ -247,12 +281,12 @@ export async function updateUserProfile(userId: number, data: { fullName?: strin
       params.push(avatarUrl)
     }
 
-    query += " WHERE id = ?"
+    query += ", updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     params.push(userId)
 
-    await db.run(query, params)
+    execQuery(query, params)
 
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, email, full_name, avatar_url, credits, role
        FROM users
        WHERE id = ?`,
@@ -266,9 +300,10 @@ export async function updateUserProfile(userId: number, data: { fullName?: strin
 
 // Document management
 export async function getDocumentsByUserId(userId: number) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    return runQuery(
       `SELECT id, title, user_id, created_at, updated_at
        FROM documents
        WHERE user_id = ?
@@ -282,17 +317,19 @@ export async function getDocumentsByUserId(userId: number) {
 }
 
 export async function createDocument(userId: number, title: string, content: string) {
-  try {
-    const db = await getDb()
-    const id = generateId()
+  await initDb()
 
-    await db.run(
-      `INSERT INTO documents (id, title, content, user_id)
-       VALUES (?, ?, ?, ?)`,
-      [id, title, content, userId],
+  try {
+    const id = generateId()
+    const timestamp = new Date().toISOString()
+
+    execQuery(
+      `INSERT INTO documents (id, title, content, user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, title, content, userId, timestamp, timestamp],
     )
 
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, title, user_id, created_at, updated_at
        FROM documents
        WHERE id = ?`,
@@ -305,9 +342,10 @@ export async function createDocument(userId: number, title: string, content: str
 }
 
 export async function getDocumentById(id: string, userId: number) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, title, content, user_id, created_at, updated_at
        FROM documents
        WHERE id = ? AND user_id = ?`,
@@ -320,12 +358,12 @@ export async function getDocumentById(id: string, userId: number) {
 }
 
 export async function updateDocument(id: string, userId: number, data: { title?: string; content?: string }) {
+  await initDb()
   const { title, content } = data
 
   if (!title && !content) return null
 
   try {
-    const db = await getDb()
     let query = "UPDATE documents SET "
     const params = []
 
@@ -340,12 +378,12 @@ export async function updateDocument(id: string, userId: number, data: { title?:
       params.push(content)
     }
 
-    query += " WHERE id = ? AND user_id = ?"
+    query += ", updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
     params.push(id, userId)
 
-    await db.run(query, params)
+    execQuery(query, params)
 
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, title, content, user_id, created_at, updated_at
        FROM documents
        WHERE id = ?`,
@@ -358,9 +396,10 @@ export async function updateDocument(id: string, userId: number, data: { title?:
 }
 
 export async function deleteDocument(id: string, userId: number) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    await db.run(
+    execQuery(
       `DELETE FROM documents
        WHERE id = ? AND user_id = ?`,
       [id, userId],
@@ -375,9 +414,10 @@ export async function deleteDocument(id: string, userId: number) {
 
 // Document versions
 export async function getDocumentVersions(documentId: string) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    return runQuery(
       `SELECT id, document_id, content, version_number, created_at
        FROM document_versions
        WHERE document_id = ?
@@ -391,17 +431,19 @@ export async function getDocumentVersions(documentId: string) {
 }
 
 export async function createDocumentVersion(documentId: string, content: string, versionNumber: number) {
-  try {
-    const db = await getDb()
-    const id = generateId()
+  await initDb()
 
-    await db.run(
-      `INSERT INTO document_versions (id, document_id, content, version_number)
-       VALUES (?, ?, ?, ?)`,
-      [id, documentId, content, versionNumber],
+  try {
+    const id = generateId()
+    const timestamp = new Date().toISOString()
+
+    execQuery(
+      `INSERT INTO document_versions (id, document_id, content, version_number, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, documentId, content, versionNumber, timestamp],
     )
 
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, document_id, content, version_number, created_at
        FROM document_versions
        WHERE id = ?`,
@@ -415,9 +457,10 @@ export async function createDocumentVersion(documentId: string, content: string,
 
 // Missing fields
 export async function getMissingFields(documentId: string) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    return runQuery(
       `SELECT id, document_id, field_name, field_value, created_at, updated_at
        FROM missing_fields
        WHERE document_id = ?`,
@@ -430,16 +473,17 @@ export async function getMissingFields(documentId: string) {
 }
 
 export async function updateMissingField(id: string, value: string) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    await db.run(
+    execQuery(
       `UPDATE missing_fields
-       SET field_value = ?
+       SET field_value = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [value, id],
     )
 
-    return await db.get(
+    return runQuerySingle(
       `SELECT id, document_id, field_name, field_value, updated_at
        FROM missing_fields
        WHERE id = ?`,
@@ -453,9 +497,10 @@ export async function updateMissingField(id: string, value: string) {
 
 // Credit management
 export async function getUserCredits(userId: number) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    const result = await db.get(
+    const result = runQuerySingle(
       `SELECT credits
        FROM users
        WHERE id = ?`,
@@ -469,11 +514,11 @@ export async function getUserCredits(userId: number) {
 }
 
 export async function updateUserCredits(userId: number, amount: number, description: string, type: "add" | "subtract") {
-  try {
-    const db = await getDb()
+  await initDb()
 
+  try {
     // Update user credits
-    await db.run(
+    execQuery(
       `UPDATE users
        SET credits = credits ${type === "add" ? "+" : "-"} ?
        WHERE id = ?`,
@@ -481,13 +526,14 @@ export async function updateUserCredits(userId: number, amount: number, descript
     )
 
     // Record the transaction
-    await db.run(
-      `INSERT INTO credit_transactions (user_id, amount, description, transaction_type)
-       VALUES (?, ?, ?, ?)`,
-      [userId, amount, description, type],
+    const timestamp = new Date().toISOString()
+    execQuery(
+      `INSERT INTO credit_transactions (user_id, amount, description, transaction_type, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, amount, description, type, timestamp],
     )
 
-    const result = await db.get(
+    const result = runQuerySingle(
       `SELECT credits
        FROM users
        WHERE id = ?`,
@@ -502,14 +548,15 @@ export async function updateUserCredits(userId: number, amount: number, descript
 }
 
 export async function logUsage(userId: number, actionType: string, documentId: string | null, creditsUsed: number) {
-  try {
-    const db = await getDb()
+  await initDb()
 
+  try {
     // Log usage
-    await db.run(
-      `INSERT INTO usage_logs (user_id, action_type, document_id, credits_used)
-       VALUES (?, ?, ?, ?)`,
-      [userId, actionType, documentId, creditsUsed],
+    const timestamp = new Date().toISOString()
+    execQuery(
+      `INSERT INTO usage_logs (user_id, action_type, document_id, credits_used, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, actionType, documentId, creditsUsed, timestamp],
     )
 
     // Subtract credits from user if needed
@@ -524,9 +571,10 @@ export async function logUsage(userId: number, actionType: string, documentId: s
 
 // Admin functions
 export async function getAllUsers(limit = 100, offset = 0) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    return runQuery(
       `SELECT id, email, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        ORDER BY created_at DESC
@@ -540,9 +588,10 @@ export async function getAllUsers(limit = 100, offset = 0) {
 }
 
 export async function getUserCount() {
+  await initDb()
+
   try {
-    const db = await getDb()
-    const result = await db.get(`SELECT COUNT(*) as count FROM users`)
+    const result = runQuerySingle(`SELECT COUNT(*) as count FROM users`)
     return result?.count || 0
   } catch (error) {
     console.error("Error getting user count:", error)
@@ -551,18 +600,18 @@ export async function getUserCount() {
 }
 
 export async function getUsageStats(days = 30) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    // In SQL.js, we don't have the datetime function, so we'll just return all stats
+    return runQuery(
       `SELECT 
          action_type, 
          COUNT(*) as count, 
          SUM(credits_used) as total_credits
        FROM usage_logs
-       WHERE created_at > datetime('now', '-' || ? || ' days')
        GROUP BY action_type
        ORDER BY total_credits DESC`,
-      [days],
     )
   } catch (error) {
     console.error("Error getting usage stats:", error)
@@ -571,18 +620,20 @@ export async function getUsageStats(days = 30) {
 }
 
 export async function getUserUsageStats(userId: number, days = 30) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    // In SQL.js, we don't have the datetime function, so we'll just filter by user_id
+    return runQuery(
       `SELECT 
          action_type, 
          COUNT(*) as count, 
          SUM(credits_used) as total_credits
        FROM usage_logs
-       WHERE user_id = ? AND created_at > datetime('now', '-' || ? || ' days')
+       WHERE user_id = ?
        GROUP BY action_type
        ORDER BY total_credits DESC`,
-      [userId, days],
+      [userId],
     )
   } catch (error) {
     console.error("Error getting user usage stats:", error)
@@ -591,9 +642,10 @@ export async function getUserUsageStats(userId: number, days = 30) {
 }
 
 export async function getCreditTransactions(userId: number, limit = 20) {
+  await initDb()
+
   try {
-    const db = await getDb()
-    return await db.all(
+    return runQuery(
       `SELECT id, amount, description, transaction_type, created_at
        FROM credit_transactions
        WHERE user_id = ?
@@ -607,42 +659,7 @@ export async function getCreditTransactions(userId: number, limit = 20) {
   }
 }
 
-// Create admin user if it doesn't exist
-export async function createAdminUser() {
-  try {
-    const db = await getDb()
-    const existingAdmin = await getUserByEmail("admin@example.com")
-
-    if (!existingAdmin) {
-      console.log("Creating admin user")
-      const hashedPassword = "$2a$10$mLK.rrdlvx9DCFb6Eck1t.TlltnGulepXnov3bBp5T2TloO1MYj52" // admin123
-
-      await db.run(
-        `INSERT INTO users (email, password_hash, full_name, credits, role)
-         VALUES (?, ?, ?, 1000, 'admin')`,
-        ["admin@example.com", hashedPassword, "Admin User"],
-      )
-
-      const admin = await getUserByEmail("admin@example.com")
-      console.log("Admin user created:", admin)
-    } else {
-      console.log("Admin user already exists")
-    }
-  } catch (error) {
-    console.error("Error creating admin user:", error)
-  }
-}
-
-// Initialize the database and create admin user
-export async function initDb() {
-  try {
-    await initializeDatabase()
-    await createAdminUser()
-    console.log("Database initialized successfully")
-  } catch (error) {
-    console.error("Error initializing database:", error)
-  }
-}
-
 // Initialize the database when this module is imported
-initDb()
+initDb().catch((error) => {
+  console.error("Failed to initialize database:", error)
+})

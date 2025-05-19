@@ -3,12 +3,12 @@ import { cookies } from "next/headers"
 
 export async function POST() {
   try {
-    // Clear the auth cookie
+    // Clear auth cookie
     cookies().delete("auth_token")
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Logout error:", error)
-    return NextResponse.json({ error: "Failed to log out" }, { status: 500 })
+    return NextResponse.json({ success: false, error: "An error occurred during logout" }, { status: 500 })
   }
 }

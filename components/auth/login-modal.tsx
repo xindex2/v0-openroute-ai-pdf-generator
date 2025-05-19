@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useAuth } from "@/contexts/auth-context"
 import { Loader2 } from "lucide-react"
 
 interface LoginModalProps {
@@ -17,52 +18,19 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ isOpen, onClose, onSuccess, onSwitchToRegister }: LoginModalProps) {
+  const { login, loading, error: authError } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
 
     try {
       console.log("Submitting login form", { email })
-
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
-
-      // Check if response is OK before trying to parse JSON
-      if (!response.ok) {
-        // Try to parse error message from JSON response
-        let errorMessage = "Failed to login"
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-        } catch (parseError) {
-          // If JSON parsing fails, use text content or status
-          const textContent = await response.text()
-          errorMessage = textContent || `Server error: ${response.status}`
-        }
-        throw new Error(errorMessage)
-      }
-
-      // Parse successful response
-      let data
-      try {
-        data = await response.json()
-      } catch (parseError) {
-        console.error("Failed to parse JSON response:", parseError)
-        throw new Error("Invalid response from server")
-      }
-
-      console.log("Login successful", data)
+      await login(email, password)
+      console.log("Login successful")
 
       if (onSuccess) {
         onSuccess()
@@ -70,21 +38,21 @@ export function LoginModal({ isOpen, onClose, onSuccess, onSwitchToRegister }: L
 
       onClose()
     } catch (err) {
-      console.error("Login error:", err)
+      console.error("Login form error:", err)
       setError(err instanceof Error ? err.message : "An error occurred during login")
-    } finally {
-      setLoading(false)
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Login</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          {error && <div className="bg-red-50 p-3 rounded-md text-red-500 text-sm">{error}</div>}
+          {(error || authError) && (
+            <div className="bg-red-50 p-3 rounded-md text-red-500 text-sm">{error || authError}</div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>

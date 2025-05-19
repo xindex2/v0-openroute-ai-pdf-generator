@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server"
-import { getUserByEmail, createAdminUser } from "@/lib/db"
+import { getUserByEmail, initDb } from "@/lib/memory-db"
 
 export async function GET() {
   try {
-    console.log("Testing SQLite database connection")
+    console.log("Testing in-memory database")
 
-    // Ensure admin user exists
-    await createAdminUser()
+    // Initialize the database
+    await initDb()
 
     // Try to get the admin user
     const adminUser = await getUserByEmail("admin@example.com")
 
     return NextResponse.json({
       success: true,
-      message: "SQLite database connection successful",
+      message: "In-memory database connection successful",
       adminUser: adminUser
         ? {
             id: adminUser.id,

@@ -1,11 +1,9 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getUserByEmail, comparePasswords } from "@/lib/db"
+import { NextResponse } from "next/server"
+import { getUserByEmail, comparePasswords } from "@/lib/memory-db"
+import { generateToken } from "@/lib/auth"
 import { cookies } from "next/headers"
-import { sign } from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   console.log("Login API route called")
 
   try {
@@ -16,7 +14,7 @@ export async function POST(request: NextRequest) {
       console.log("Request body parsed:", { email: body.email, passwordProvided: !!body.password })
     } catch (error) {
       console.error("Failed to parse request body:", error)
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+      return NextResponse.json({ success: false, error: "Invalid request body" }, { status: 400 })
     }
 
     const { email, password } = body
@@ -24,52 +22,47 @@ export async function POST(request: NextRequest) {
     // Validate input
     if (!email || !password) {
       console.log("Missing required fields")
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+      return NextResponse.json({ success: false, error: "Email and password are required" }, { status: 400 })
     }
 
-    // Find user
-    console.log("Looking up user")
-    const user = getUserByEmail(email)
+    // Get user by email
+    console.log("Looking up user:", email)
+    const user = await getUserByEmail(email)
     if (!user) {
       console.log("User not found")
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+      return NextResponse.json({ success: false, error: "Invalid email or password" }, { status: 401 })
     }
 
     // Verify password
     console.log("Verifying password")
-    const isPasswordValid = await comparePasswords(password, user.password_hash)
-    if (!isPasswordValid) {
+    const passwordValid = await comparePasswords(password, user.password_hash)
+    if (!passwordValid) {
       console.log("Invalid password")
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+      return NextResponse.json({ success: false, error: "Invalid email or password" }, { status: 401 })
     }
 
-    // Create JWT token
-    console.log("Creating JWT token")
-    const token = sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "7d" },
-    )
+    // Generate JWT token
+    console.log("Generating token")
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
 
     // Set cookie
     console.log("Setting auth cookie")
-    cookies().set({
-      name: "auth_token",
-      value: token,
+    cookies().set("auth_token", token, {
       httpOnly: true,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7, // 1 week
     })
 
     // Return user data (without password)
     console.log("Returning user data")
     return NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
@@ -82,7 +75,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Login error:", error)
     return NextResponse.json(
-      { error: "Failed to log in: " + (error instanceof Error ? error.message : String(error)) },
+      {
+        success: false,
+        error: "An error occurred during login: " + (error instanceof Error ? error.message : String(error)),
+      },
       { status: 500 },
     )
   }

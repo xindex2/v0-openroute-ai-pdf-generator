@@ -1,58 +1,75 @@
+import jwt from "jsonwebtoken"
 import { cookies } from "next/headers"
-import { verify } from "jsonwebtoken"
-import { getUserById } from "@/lib/db"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
-export async function getAuthUser() {
+// User payload for JWT
+interface UserPayload {
+  id: number
+  email: string
+  role: string
+}
+
+// Generate JWT token
+export function generateToken(user: UserPayload): string {
+  return jwt.sign(user, JWT_SECRET, { expiresIn: "7d" })
+}
+
+// Verify JWT token
+export function verifyToken(token: string): UserPayload | null {
   try {
-    // Get the token from cookies
-    const token = cookies().get("auth_token")?.value
-
-    if (!token) {
-      return null
-    }
-
-    // Verify the token
-    const decoded = verify(token, JWT_SECRET) as { id: number; email: string; role: string }
-
-    // Get user from database
-    const user = getUserById(decoded.id)
-
-    if (!user) {
-      return null
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      fullName: user.full_name,
-      avatarUrl: user.avatar_url,
-      credits: user.credits,
-      role: user.role,
-    }
+    return jwt.verify(token, JWT_SECRET) as UserPayload
   } catch (error) {
-    console.error("Auth error:", error)
+    console.error("Token verification error:", error)
     return null
   }
 }
 
-export async function requireAuth() {
-  const user = await getAuthUser()
+// Verify authentication from cookies
+export async function verifyAuth() {
+  try {
+    // Get token from cookies
+    const token = cookies().get("auth_token")?.value
 
-  if (!user) {
+    if (!token) {
+      return { success: false, error: "No authentication token" }
+    }
+
+    // Verify token
+    const user = verifyToken(token)
+    if (!user) {
+      return { success: false, error: "Invalid authentication token" }
+    }
+
+    return { success: true, user }
+  } catch (error) {
+    console.error("Authentication error:", error)
+    return { success: false, error: "Authentication error" }
+  }
+}
+
+// Middleware to require authentication
+export async function requireAuth() {
+  const authResult = await verifyAuth()
+
+  if (!authResult.success) {
     throw new Error("Not authenticated")
   }
 
-  return user
+  return authResult.user
 }
 
+// Middleware to require admin role
 export async function requireAdmin() {
-  const user = await requireAuth()
+  const authResult = await verifyAuth()
 
-  if (user.role !== "admin") {
+  if (!authResult.success) {
+    throw new Error("Not authenticated")
+  }
+
+  if (authResult.user.role !== "admin") {
     throw new Error("Not authorized")
   }
 
-  return user
+  return authResult.user
 }

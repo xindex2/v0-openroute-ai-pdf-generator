@@ -1,42 +1,34 @@
 import { NextResponse } from "next/server"
-import { requireAdmin } from "@/lib/auth"
-import { getUsageStats, getUserCount } from "@/lib/db"
+import { verifyAuth } from "@/lib/auth"
+import { getUserCount, getUsageStats } from "@/lib/memory-db"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Verify admin authentication
-    await requireAdmin()
+    // Verify authentication
+    const auth = await verifyAuth()
 
-    // Get usage stats
-    const stats = await getUsageStats(30)
-    const totalUsers = await getUserCount()
+    if (!auth.success) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
+    }
 
-    // Calculate summary
-    let totalUsage = 0
-    let totalCredits = 0
+    // Check if user is admin
+    if (auth.user.role !== "admin") {
+      return NextResponse.json({ success: false, error: "Not authorized" }, { status: 403 })
+    }
 
-    stats.forEach((stat: any) => {
-      totalUsage += Number(stat.count)
-      totalCredits += Number(stat.total_credits)
-    })
-
-    // Format stats
-    const formattedStats = stats.map((stat: any) => ({
-      actionType: stat.action_type,
-      count: Number(stat.count),
-      totalCredits: Number(stat.total_credits),
-    }))
+    // Get stats
+    const userCount = await getUserCount()
+    const usageStats = await getUsageStats()
 
     return NextResponse.json({
-      stats: formattedStats,
-      summary: {
-        totalUsers,
-        totalUsage,
-        totalCredits,
+      success: true,
+      stats: {
+        userCount,
+        usageStats,
       },
     })
   } catch (error) {
-    console.error("Admin stats error:", error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to get stats" }, { status: 401 })
+    console.error("Get stats error:", error)
+    return NextResponse.json({ success: false, error: "An error occurred while getting stats" }, { status: 500 })
   }
 }

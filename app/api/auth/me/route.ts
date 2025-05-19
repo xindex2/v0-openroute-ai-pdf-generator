@@ -1,31 +1,26 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { verify } from "jsonwebtoken"
-import { getUserById } from "@/lib/db"
+import { NextResponse } from "next/server"
+import { getUserById } from "@/lib/memory-db"
+import { verifyAuth } from "@/lib/auth"
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
-
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    // Get the token from cookies
-    const token = cookies().get("auth_token")?.value
+    // Verify authentication
+    const auth = await verifyAuth()
 
-    if (!token) {
-      return NextResponse.json({ user: null })
+    if (!auth.success) {
+      return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 })
     }
 
-    // Verify the token
-    const decoded = verify(token, JWT_SECRET) as { id: number; email: string; role: string }
-
-    // Get user from database
-    const user = getUserById(decoded.id)
+    // Get user data
+    const user = await getUserById(auth.user.id)
 
     if (!user) {
-      return NextResponse.json({ user: null })
+      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 })
     }
 
     // Return user data (without password)
     return NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
@@ -36,7 +31,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Auth error:", error)
-    return NextResponse.json({ user: null })
+    console.error("Get user error:", error)
+    return NextResponse.json({ success: false, error: "An error occurred while getting user data" }, { status: 500 })
   }
 }
