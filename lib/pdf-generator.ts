@@ -58,7 +58,7 @@ export async function generatePdfFromHtml(contentElement: HTMLElement): Promise<
           }
 
           // Add content paragraphs
-          const paragraphs = container.querySelectorAll("p, h2, h3, h4, h5, h6, ul, ol, table")
+          const paragraphs = container.querySelectorAll("p, h2, h3, h4, h5, h5, ul, ol, table")
           pdf.setFontSize(12)
           pdf.setTextColor(0, 0, 0)
 
@@ -138,7 +138,7 @@ export async function generatePdfFromHtml(contentElement: HTMLElement): Promise<
             pdf.setPage(i)
             pdf.setFontSize(8)
             pdf.setTextColor(100, 100, 100)
-            pdf.text(`Page ${i} of ${pageCount} - Generated with AI PDF Generator`, 105, 290, { align: "center" })
+            pdf.text(`Page ${i} of ${pageCount} - Generated with WriteDoc.ai`, 105, 290, { align: "center" })
           }
 
           // Get the PDF as a blob

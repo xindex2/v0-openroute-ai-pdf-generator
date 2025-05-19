@@ -1,18 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, FileText, Search, MoreVertical } from "lucide-react"
+import { Plus, FileText, Search, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import UserProfile from "@/components/user-profile"
+import { useAuth } from "@/context/auth-context"
+import { createDocument, updateDocumentTitle, deleteDocument } from "@/lib/document-storage"
 
 export interface Document {
   id: string
   title: string
-  createdAt: Date
-  updatedAt: Date
+  created_at: string
+  updated_at: string
 }
 
 interface DocumentListProps {
@@ -23,6 +25,8 @@ interface DocumentListProps {
   onDeleteDocument: (documentId: string) => void
   onRenameDocument: (documentId: string, newTitle: string) => void
   collapsed?: boolean
+  sidebarOpen: boolean
+  toggleSidebar: () => void
 }
 
 export default function DocumentList({
@@ -33,10 +37,13 @@ export default function DocumentList({
   onDeleteDocument,
   onRenameDocument,
   collapsed = false,
+  sidebarOpen,
+  toggleSidebar,
 }: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState("")
+  const { user } = useAuth()
 
   const filteredDocuments = documents.filter((doc) => doc.title.toLowerCase().includes(searchQuery.toLowerCase()))
 
@@ -45,21 +52,70 @@ export default function DocumentList({
     setNewTitle(doc.title)
   }
 
-  const handleFinishRename = (id: string) => {
-    if (newTitle.trim()) {
-      onRenameDocument(id, newTitle.trim())
+  const handleFinishRename = async (id: string) => {
+    if (newTitle.trim() && user) {
+      try {
+        await updateDocumentTitle(id, newTitle.trim())
+        onRenameDocument(id, newTitle.trim())
+      } catch (error) {
+        console.error("Error renaming document:", error)
+      }
     }
     setRenamingId(null)
     setNewTitle("")
   }
 
+  const handleCreateDoc = async () => {
+    if (user) {
+      try {
+        const newDoc = await createDocument(user.id, `New Document ${documents.length + 1}`)
+        onCreateDocument()
+      } catch (error) {
+        console.error("Error creating document:", error)
+      }
+    } else {
+      onCreateDocument()
+    }
+  }
+
+  const handleDeleteDoc = async (id: string) => {
+    if (user) {
+      try {
+        await deleteDocument(id)
+        onDeleteDocument(id)
+      } catch (error) {
+        console.error("Error deleting document:", error)
+      }
+    } else {
+      onDeleteDocument(id)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* New Document Button */}
-
+      <div className="p-4 flex items-center justify-between border-b bg-sidebar">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <FileText className="h-5 w-5 text-sidebar-accent flex-shrink-0" />
+          {sidebarOpen && (
+            <div className="overflow-hidden">
+              <h1 className="text-xl font-bold text-sidebar-foreground truncate">WriteDoc</h1>
+              <p className="text-sidebar-accent text-xs">Create documents with AI</p>
+            </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleSidebar}
+          className="text-sidebar-foreground ml-2 flex-shrink-0"
+        >
+          {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </Button>
+      </div>
       <div className="p-4 border-b bg-sidebar">
         <Button
-          onClick={onCreateDocument}
+          onClick={handleCreateDoc}
           className={`${collapsed ? "w-8 p-0" : "w-full"} bg-gradient-green hover:opacity-90 text-white`}
         >
           <Plus className={`${collapsed ? "" : "mr-2"} h-4 w-4`} />
@@ -144,7 +200,7 @@ export default function DocumentList({
                         className="text-red-600 focus:text-red-600"
                         onClick={(e) => {
                           e.stopPropagation()
-                          onDeleteDocument(doc.id)
+                          handleDeleteDoc(doc.id)
                         }}
                       >
                         Delete

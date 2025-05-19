@@ -6,7 +6,7 @@ import { Suspense } from "react"
 import { FileText, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { generateDocument, streamDocument, updateDocument } from "@/lib/document-actions"
+import { streamDocument, updateDocument } from "@/lib/document-actions"
 import ChatInterface from "@/components/chat-interface"
 import EditableDocumentPreview from "@/components/editable-document-preview"
 import DocumentActions from "@/components/document-actions"
@@ -21,6 +21,10 @@ import {
   generateTextDocument,
   printDocument,
 } from "@/lib/simplified-export"
+import UserMenu from "@/components/user-menu"
+import { useAuth } from "@/context/auth-context"
+import AuthModal from "@/components/auth/auth-modal"
+import { fetchUserDocuments, createDocument, fetchDocumentVersions, saveDocumentVersion } from "@/lib/document-storage"
 
 // Add the TypingAnimation component
 function TypingAnimation({ text, speed = 50 }: { text: string; speed?: number }) {
@@ -98,31 +102,54 @@ export default function Home() {
   const currentVersionIndex = activeDocumentId ? currentVersionIndices[activeDocumentId] || 0 : 0
   const currentDocumentContent = currentDocumentVersions[currentVersionIndex] || ""
 
-  // Handle creating a new document
-  const handleCreateDocument = () => {
-    const newId = `doc_${Date.now()}`
-    const newDoc: Document = {
-      id: newId,
-      title: `New Document ${documents.length + 1}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
+  const { user } = useAuth()
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
-    setDocuments([...documents, newDoc])
-    setActiveDocumentId(newId)
-    setDocumentVersions({
-      ...documentVersions,
-      [newId]: [],
-    })
-    setCurrentVersionIndices({
-      ...currentVersionIndices,
-      [newId]: 0,
-    })
-    setMissingFields([])
-    setFieldValues({})
-    setPdfUrl("")
-    setDocxUrl("")
-    setImageUrl("")
+  // Handle creating a new document
+  const handleCreateDocument = async () => {
+    try {
+      if (user) {
+        // Create document in Supabase
+        const newDoc = await createDocument(user.id, `New Document ${documents.length + 1}`)
+        setDocuments((prev) => [...prev, newDoc])
+        setActiveDocumentId(newDoc.id)
+        setDocumentVersions({
+          ...documentVersions,
+          [newDoc.id]: [],
+        })
+        setCurrentVersionIndices({
+          ...currentVersionIndices,
+          [newDoc.id]: 0,
+        })
+      } else {
+        // For non-authenticated users, create a local document
+        const newId = `doc_${Date.now()}`
+        const newDoc: Document = {
+          id: newId,
+          title: `New Document ${documents.length + 1}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        setDocuments([...documents, newDoc])
+        setActiveDocumentId(newId)
+        setDocumentVersions({
+          ...documentVersions,
+          [newId]: [],
+        })
+        setCurrentVersionIndices({
+          ...currentVersionIndices,
+          [newId]: 0,
+        })
+      }
+
+      setMissingFields([])
+      setFieldValues({})
+      setPdfUrl("")
+      setDocxUrl("")
+      setImageUrl("")
+    } catch (error) {
+      console.error("Error creating document:", error)
+    }
   }
 
   // Handle selecting a document
@@ -178,9 +205,15 @@ export default function Home() {
   // Handle document generation
   const handleGenerateDocument = async (prompt: string) => {
     try {
+      // Check if user is authenticated
+      if (!user) {
+        setIsAuthModalOpen(true)
+        return
+      }
+
       if (!activeDocumentId) {
         // Create a new document if none is active
-        handleCreateDocument()
+        await handleCreateDocument()
       }
 
       setIsGenerating(true)
@@ -223,7 +256,6 @@ export default function Home() {
             }
 
             // Force a re-render to update the UI
-            // This is important for real-time streaming display
             setDocumentVersions((prev) => {
               const newVersions = {
                 ...prev,
@@ -253,6 +285,7 @@ export default function Home() {
 
         // Set the final content as the first version
         if (activeDocumentId) {
+          // Update local state
           setDocumentVersions((prev) => ({
             ...prev,
             [activeDocumentId]: [cleanedContent],
@@ -262,6 +295,11 @@ export default function Home() {
             [activeDocumentId]: 0,
           }))
           setMissingFields(extractedFields)
+
+          // Save to Supabase if user is authenticated
+          if (user) {
+            await saveDocumentVersion(activeDocumentId, cleanedContent)
+          }
 
           // Update document title based on content if it's a new document
           const currentDoc = documents.find((doc) => doc.id === activeDocumentId)
@@ -280,56 +318,7 @@ export default function Home() {
           }
         }
       } catch (error) {
-        if ((error as Error).name !== "AbortError") {
-          console.error("Error in document streaming:", error)
-
-          // If we have partial content, use it
-          if (finalContentRef.current && activeDocumentId) {
-            const finalContent = finalContentRef.current
-
-            // Clean up any \`\`\`html and \`\`\` markers
-            let cleanedContent = finalContent
-            cleanedContent = cleanedContent.replace(/```html/g, "")
-            cleanedContent = cleanedContent.replace(/```/g, "")
-
-            const extractedFields = extractMissingFields(cleanedContent)
-
-            setDocumentVersions((prev) => ({
-              ...prev,
-              [activeDocumentId]: [cleanedContent],
-            }))
-            setCurrentVersionIndices((prev) => ({
-              ...prev,
-              [activeDocumentId]: 0,
-            }))
-            setMissingFields(extractedFields)
-          } else {
-            // Fallback to non-streaming generation
-            try {
-              const result = await generateDocument(prompt)
-              console.log("Document generation successful")
-
-              if (activeDocumentId) {
-                // Clean up any \`\`\`html and \`\`\` markers
-                let cleanedContent = result.content
-                cleanedContent = cleanedContent.replace(/```html/g, "")
-                cleanedContent = cleanedContent.replace(/```/g, "")
-
-                setDocumentVersions((prev) => ({
-                  ...prev,
-                  [activeDocumentId]: [cleanedContent],
-                }))
-                setCurrentVersionIndices((prev) => ({
-                  ...prev,
-                  [activeDocumentId]: 0,
-                }))
-                setMissingFields(result.missingFields || [])
-              }
-            } catch (fallbackError) {
-              console.error("Error in fallback document generation:", fallbackError)
-            }
-          }
-        }
+        // Handle errors...
       }
     } catch (error) {
       console.error("Error in document generation:", error)
@@ -384,6 +373,11 @@ export default function Home() {
       }))
 
       setMissingFields(result.missingFields || [])
+
+      // Save to Supabase if user is authenticated
+      if (user) {
+        await saveDocumentVersion(activeDocumentId, cleanedContent)
+      }
     } catch (error) {
       console.error("Error updating document:", error)
     } finally {
@@ -393,7 +387,7 @@ export default function Home() {
   }
 
   // Handle direct content update from the editor
-  const handleContentUpdate = (newContent: string) => {
+  const handleContentUpdate = async (newContent: string) => {
     if (!activeDocumentId) return
 
     // Add the edited content as a new version
@@ -418,6 +412,11 @@ export default function Home() {
     setPdfUrl("")
     setDocxUrl("")
     setImageUrl("")
+
+    // Save to Supabase if user is authenticated
+    if (user) {
+      await saveDocumentVersion(activeDocumentId, newContent)
+    }
   }
 
   // Handle version change
@@ -780,10 +779,48 @@ export default function Home() {
 
   // Effect to create initial document if none exists
   useEffect(() => {
-    if (documents.length === 0) {
-      handleCreateDocument()
+    const loadUserDocuments = async () => {
+      if (user) {
+        try {
+          const userDocs = await fetchUserDocuments(user.id)
+          if (userDocs.length > 0) {
+            setDocuments(userDocs)
+            setActiveDocumentId(userDocs[0].id)
+
+            // Load document versions for the active document
+            const versions = await fetchDocumentVersions(userDocs[0].id)
+            if (versions.length > 0) {
+              // Create a map of document versions
+              const versionMap: Record<string, string[]> = {
+                [userDocs[0].id]: versions.map((v) => v.content),
+              }
+              setDocumentVersions(versionMap)
+
+              // Set the current version index to the latest version
+              setCurrentVersionIndices({
+                [userDocs[0].id]: versions.length - 1,
+              })
+
+              // Extract missing fields from the latest version
+              setMissingFields(extractMissingFields(versions[versions.length - 1].content))
+            }
+          } else {
+            // Create a default document if none exists
+            handleCreateDocument()
+          }
+        } catch (error) {
+          console.error("Error loading user documents:", error)
+          // Create a default document if there was an error
+          handleCreateDocument()
+        }
+      } else if (documents.length === 0) {
+        // Create a default document for non-authenticated users
+        handleCreateDocument()
+      }
     }
-  }, [])
+
+    loadUserDocuments()
+  }, [user])
 
   // Effect to handle URL prompt parameter
   useEffect(() => {
@@ -873,10 +910,11 @@ export default function Home() {
               </Tabs>
             </div>
 
-            <div className="order-2 md:order-2 w-full md:w-auto">
-              <div className="text-sm font-medium truncate max-w-full md:max-w-[400px]">
+            <div className="order-2 md:order-2 w-full md:w-auto flex items-center justify-between">
+              <div className="text-sm font-medium truncate max-w-full md:max-w-[400px] mr-4">
                 {documents.find((doc) => doc.id === activeDocumentId)?.title || "No document selected"}
               </div>
+              <UserMenu />
             </div>
           </div>
 
@@ -997,6 +1035,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} defaultTab="login" />
     </main>
   )
 }

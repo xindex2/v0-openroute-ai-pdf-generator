@@ -1,23 +1,51 @@
 "use client"
 
-import { LogOut, User, CreditCard } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { LogOut, User, CreditCard } from "lucide-react"
+import { useState } from "react"
+import AuthModal from "./auth/auth-modal"
 
 interface UserProfileProps {
-  username?: string
-  avatarUrl?: string
-  credits?: number
   collapsed?: boolean
 }
 
-export default function UserProfile({
-  username = "User",
-  avatarUrl,
-  credits = 100,
-  collapsed = false,
-}: UserProfileProps) {
+export default function UserProfile({ collapsed = false }: UserProfileProps) {
+  const { user, profile, signOut } = useAuth()
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+
+  const username = profile?.username || user?.email?.split("@")[0] || "User"
+  const credits = profile?.credits || 0
+  const avatarUrl = profile?.avatar_url
+
+  if (!user) {
+    return (
+      <div className={`p-4 border-t bg-sidebar flex ${collapsed ? "justify-center" : "justify-between"} items-center`}>
+        {!collapsed ? (
+          <Button
+            onClick={() => setIsAuthModalOpen(true)}
+            className="w-full bg-gradient-green hover:opacity-90 text-white"
+          >
+            Sign In
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsAuthModalOpen(true)}
+            className="text-sidebar-foreground hover:text-sidebar-accent"
+          >
+            <User className="h-4 w-4" />
+          </Button>
+        )}
+
+        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} defaultTab="login" />
+      </div>
+    )
+  }
+
   return (
     <div className={`p-4 border-t bg-sidebar flex ${collapsed ? "justify-center" : "justify-between"} items-center`}>
       {!collapsed ? (
@@ -47,7 +75,7 @@ export default function UserProfile({
             <DropdownMenuContent align="end">
               <DropdownMenuItem>Profile</DropdownMenuItem>
               <DropdownMenuItem>Settings</DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => signOut()}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </DropdownMenuItem>
