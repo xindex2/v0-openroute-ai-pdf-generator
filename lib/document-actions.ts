@@ -1,91 +1,25 @@
 "use server"
 
+import { generatePdf } from "./pdf-actions"
+
+// Function to generate a document from a prompt
 export async function generateDocument(prompt: string) {
   try {
-    console.log("Starting document generation with OpenRouter API")
+    console.log("Generating document from prompt:", prompt)
 
-    // Create a more detailed prompt for the AI
-    const enhancedPrompt = `
-  Generate a professional document based on this request: "${prompt}"
-  
-  The document should be well-structured and formatted with HTML.
-  Use appropriate HTML tags (h1, h2, p, table, etc.) for formatting.
-  
-  IMPORTANT: Apply rich styling directly in the HTML with inline styles:
-  - Use attractive colors for headings, backgrounds, and sections
-  - Apply proper spacing, margins, and padding
-  - Create visually distinct sections with background colors
-  - Use font styling appropriately (size, weight, etc.)
-  
-  Identify any fields that would need to be filled in by the user and mark them with square brackets like [Field Name].
-  
-  Return ONLY the HTML content without any explanations or markdown.
-`
+    // Extract document type from prompt or default to "document"
+    const documentType = extractDocumentType(prompt) || "document"
 
-    const OPENROUTER_API_KEY = process.env.OPENROUTE_API_KEY
-    console.log("Using OpenRouter API key:", OPENROUTER_API_KEY ? "Key is set" : "Key is missing")
+    // Call the PDF generation function
+    const result = await generatePdf(prompt, documentType)
 
-    if (!OPENROUTER_API_KEY) {
-      console.log("API key is missing, falling back to mock data")
-      return generateMockDocument(prompt)
-    }
-
-    try {
-      // Call the OpenRouter API using the provided endpoint and model
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "HTTP-Referer": "https://vercel.com",
-          "X-Title": "AI PDF Generator",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-preview",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a professional document generator. Create well-formatted HTML documents with appropriate structure and placeholders for missing information. Apply rich styling directly in the HTML with attractive colors for headings, backgrounds, and sections. Use color psychology to make documents visually appealing and professional. Include background colors, borders, and other visual elements to create a polished look.",
-            },
-            {
-              role: "user",
-              content: enhancedPrompt,
-            },
-          ],
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error("OpenRouter API error:", errorData)
-        throw new Error(`API error: ${response.status} ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      console.log("Successfully received response from OpenRouter API")
-
-      // Extract the content from the response
-      const generatedContent = data.choices[0].message.content
-
-      // Extract missing fields from the generated content
-      const missingFields = extractMissingFields(generatedContent)
-
-      return {
-        content: generatedContent,
-        missingFields,
-      }
-    } catch (apiError) {
-      console.error("OpenRouter API call failed:", apiError)
-
-      // Fallback to mock data if API call fails
-      console.log("Falling back to mock data")
-      return generateMockDocument(prompt)
+    return {
+      content: result.content,
+      missingFields: result.missingFields,
     }
   } catch (error) {
-    console.error("Error in generateDocument function:", error)
-    // Fallback to mock data
-    return generateMockDocument(prompt)
+    console.error("Error generating document:", error)
+    throw new Error("Error generating document: " + (error instanceof Error ? error.message : String(error)))
   }
 }
 
@@ -174,127 +108,124 @@ export async function updateDocument(existingContent: string, updateInstructions
   }
 }
 
-// New function to stream document generation
+// Function to stream a document generation
 export async function streamDocument(prompt: string, onChunk: (chunk: string) => void, signal?: AbortSignal) {
   try {
-    console.log("Starting document streaming with OpenRouter API")
+    console.log("Streaming document generation from prompt:", prompt)
 
-    // Create a more detailed prompt for the AI
-    const enhancedPrompt = `
-      Generate a professional document based on this request: "${prompt}"
-      
-      The document should be well-structured and formatted with HTML.
-      Use appropriate HTML tags (h1, h2, p, table, etc.) for formatting.
-      
-      IMPORTANT: Apply rich styling directly in the HTML with inline styles:
-      - Use attractive colors for headings, backgrounds, and sections
-      - Apply proper spacing, margins, and padding
-      - Create visually distinct sections with background colors
-      
-      Identify any fields that would need to be filled in by the user and mark them with square brackets like [Field Name].
-      
-      Return ONLY the HTML content without any explanations, markdown, or code blocks.
-    `
+    // Extract document type from prompt or default to "document"
+    const documentType = extractDocumentType(prompt) || "document"
 
-    const OPENROUTER_API_KEY = process.env.OPENROUTE_API_KEY
+    // For now, we'll simulate streaming by sending chunks of the document
+    // In a real implementation, you would use a streaming API
 
-    if (!OPENROUTER_API_KEY) {
-      console.log("API key is missing, falling back to mock data")
-      const mockData = generateMockDocument(prompt)
-      onChunk(mockData.content)
-      return
+    // First, generate the full document
+    const result = await generatePdf(prompt, documentType)
+
+    // Check if the request has been aborted
+    if (signal?.aborted) {
+      throw new Error("Request aborted")
     }
 
-    // Call the OpenRouter API with streaming
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://vercel.com",
-        "X-Title": "docfa.st",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a professional document generator. Create well-formatted HTML documents with appropriate structure and placeholders for missing information. Apply rich styling directly in the HTML with attractive colors for headings, backgrounds, and sections. Use color psychology to make documents visually appealing and professional. Include background colors, borders, and other visual elements to create a polished look. DO NOT include markdown code blocks or ```html tags in your response.",
-          },
-          {
-            role: "user",
-            content: enhancedPrompt,
-          },
-        ],
-        stream: true,
-      }),
-      signal,
-    })
+    // Split the content into chunks (paragraphs, sections, etc.)
+    const chunks = splitIntoChunks(result.content)
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("OpenRouter API error:", errorText)
-      throw new Error(`API error: ${response.status} ${response.statusText}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error("Response body is not readable")
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ""
-
-    // Process the stream
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
+    // Send each chunk with a delay to simulate streaming
+    for (const chunk of chunks) {
+      // Check if the request has been aborted before sending each chunk
+      if (signal?.aborted) {
+        throw new Error("Request aborted")
       }
 
-      // Decode the chunk
-      const chunk = decoder.decode(value, { stream: true })
-      buffer += chunk
+      onChunk(chunk)
 
-      // Process the buffer to extract complete JSON objects
-      let newlineIndex
-      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newlineIndex)
-        buffer = buffer.slice(newlineIndex + 1)
+      // Add a small delay between chunks to simulate streaming
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
 
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6)
-
-          if (data === "[DONE]") {
-            continue
-          }
-
-          try {
-            const parsed = JSON.parse(data)
-            const content = parsed.choices[0]?.delta?.content || ""
-
-            if (content) {
-              // Clean up any markdown code block markers
-              const cleanedContent = content.replace(/```html/g, "").replace(/```/g, "")
-
-              onChunk(cleanedContent)
-            }
-          } catch (e) {
-            console.error("Error parsing JSON:", e)
-          }
-        }
-      }
+    return {
+      content: result.content,
+      missingFields: result.missingFields,
     }
   } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      console.log("Document streaming aborted")
-      throw error
-    }
+    console.error("Error streaming document:", error)
 
-    console.error("Error in streamDocument function:", error)
-    throw error
+    // Only throw if it's not an abort error
+    if (error instanceof Error && error.message !== "Request aborted") {
+      throw new Error("Error streaming document: " + error.message)
+    } else if (error instanceof Error && error.message === "Request aborted") {
+      console.log("Document streaming was aborted")
+    } else {
+      throw new Error("Error streaming document: " + String(error))
+    }
   }
+}
+
+// Helper function to extract document type from prompt
+function extractDocumentType(prompt: string): string | null {
+  const documentTypes = [
+    "invoice",
+    "contract",
+    "agreement",
+    "report",
+    "proposal",
+    "letter",
+    "memo",
+    "resume",
+    "cv",
+    "policy",
+    "plan",
+    "statement",
+    "receipt",
+    "certificate",
+    "form",
+  ]
+
+  const promptLower = prompt.toLowerCase()
+
+  for (const type of documentTypes) {
+    if (promptLower.includes(type)) {
+      return type
+    }
+  }
+
+  return null
+}
+
+// Helper function to split content into chunks for streaming
+function splitIntoChunks(content: string): string[] {
+  // Split by HTML tags to preserve the structure
+  const tagPattern = /(<[^>]+>)/g
+  const parts = content.split(tagPattern)
+
+  const chunks: string[] = []
+  let currentChunk = ""
+
+  for (const part of parts) {
+    currentChunk += part
+
+    // If this part is not an HTML tag and ends with a period, question mark, or exclamation point,
+    // or if it's a closing tag for a block element, consider it a chunk boundary
+    if (
+      (!part.startsWith("<") && /[.!?]$/.test(part)) ||
+      part === "</p>" ||
+      part === "</div>" ||
+      part === "</h1>" ||
+      part === "</h2>" ||
+      part === "</h3>" ||
+      part === "</li>"
+    ) {
+      chunks.push(currentChunk)
+      currentChunk = ""
+    }
+  }
+
+  // Add any remaining content as the final chunk
+  if (currentChunk) {
+    chunks.push(currentChunk)
+  }
+
+  return chunks
 }
 
 // Helper function to extract missing fields from the content

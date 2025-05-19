@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Loader2, Send, Sparkles, Share2 } from "lucide-react"
+import { Loader2, Send, Sparkles, Share2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar } from "@/components/ui/avatar"
@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useAuth } from "@/context/auth-context"
 import AuthModal from "./auth/auth-modal"
 import { saveChatMessage, fetchChatMessages } from "@/lib/chat-storage"
+import { useToast } from "@/hooks/use-toast"
 
 // Add a function to save messages to localStorage
 const saveMessagesToLocalStorage = (messages: Message[], documentId: string | null) => {
@@ -75,6 +76,9 @@ export default function ChatInterface({
   hasProcessedUrlPrompt,
   setHasProcessedUrlPrompt,
 }: ChatInterfaceProps) {
+  // Initialize toast
+  const { toast } = useToast()
+
   // Load initial messages from localStorage based on documentId
   const [messages, setMessages] = useState<Message[]>(() => {
     const savedMessages = loadMessagesFromLocalStorage(documentId)
@@ -206,26 +210,31 @@ export default function ChatInterface({
     navigator.clipboard
       .writeText(shareUrl)
       .then(() => {
-        // Show a toast or alert
-        alert("Shareable link copied to clipboard!")
+        toast({
+          title: "Link copied!",
+          description: "Shareable link copied to clipboard",
+        })
       })
       .catch((err) => {
         console.error("Failed to copy URL: ", err)
+        toast({
+          title: "Failed to copy",
+          description: "Could not copy link to clipboard",
+          variant: "destructive",
+        })
       })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!input.trim()) return
+    if (!input.trim() || isSubmitting || isTyping) return
 
     // Check if user is authenticated
     if (!user) {
       setIsAuthModalOpen(true)
       return
     }
-
-    if (!input.trim() || isSubmitting || isTyping) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -235,6 +244,7 @@ export default function ChatInterface({
     }
 
     setMessages((prev) => [...prev, userMessage])
+    const userInput = input
     setInput("")
     setIsSubmitting(true)
 
@@ -246,12 +256,12 @@ export default function ChatInterface({
 
       // If we already have a document, this is an update request
       if (documentVersions > 0) {
-        await onUpdateDocument(input)
+        await onUpdateDocument(userInput)
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: `I've updated the document based on your request: "${input}". This is now version ${currentVersion + 1} of your document.`,
+          content: `I've updated the document based on your request: "${userInput}". This is now version ${currentVersion + 1} of your document.`,
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, assistantMessage])
@@ -262,7 +272,7 @@ export default function ChatInterface({
         }
       } else {
         // This is a new document generation
-        await onGenerateDocument(input)
+        await onGenerateDocument(userInput)
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -288,6 +298,12 @@ export default function ChatInterface({
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])
+
+      toast({
+        title: "Error",
+        description: "There was an error processing your request. Please try again.",
+        variant: "destructive",
+      })
 
       // Save error message to Supabase
       if (documentId && user) {
@@ -359,7 +375,7 @@ export default function ChatInterface({
                     {message.role === "user" && (
                       <Avatar className="h-8 w-8">
                         <div className="bg-muted text-muted-foreground rounded-full h-full w-full flex items-center justify-center text-sm font-semibold">
-                          U
+                          {user?.email?.charAt(0).toUpperCase() || "U"}
                         </div>
                       </Avatar>
                     )}
@@ -409,6 +425,29 @@ export default function ChatInterface({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+
+              {isTyping && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (typingIntervalRef.current) {
+                      clearTimeout(typingIntervalRef.current)
+                      typingIntervalRef.current = null
+                    }
+                    setIsTyping(false)
+                    setInput(urlPrompt || "")
+                    setLocalHasProcessedUrlPrompt(true)
+                    if (setHasProcessedUrlPrompt) {
+                      setHasProcessedUrlPrompt(true)
+                    }
+                  }}
+                  className="bg-white"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Stop Typing
+                </Button>
+              )}
 
               <Button
                 type="submit"
