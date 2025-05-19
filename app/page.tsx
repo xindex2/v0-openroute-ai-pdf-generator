@@ -6,7 +6,7 @@ import { Suspense } from "react"
 import { FileText, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { streamDocument, updateDocument } from "@/lib/document-actions"
+import { generateDocument, streamDocument, updateDocument } from "@/lib/document-actions"
 import ChatInterface from "@/components/chat-interface"
 import EditableDocumentPreview from "@/components/editable-document-preview"
 import DocumentActions from "@/components/document-actions"
@@ -21,8 +21,6 @@ import {
   generateTextDocument,
   printDocument,
 } from "@/lib/simplified-export"
-// Update the import for supabaseClient
-import { useSupabase } from "@/app/supabase-provider"
 
 // Add the TypingAnimation component
 function TypingAnimation({ text, speed = 50 }: { text: string; speed?: number }) {
@@ -60,8 +58,6 @@ function PulsingDots() {
 }
 
 export default function Home() {
-  // Inside the Home component, add this line at the top:
-  const { supabase } = useSupabase()
   // Document state
   const [documents, setDocuments] = useState<Document[]>([])
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null)
@@ -85,7 +81,6 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeTab, setActiveTab] = useState("chat") // Set chat as the default tab
   const [exportFormat, setExportFormat] = useState<"pdf" | "docx" | "image">("pdf")
-  const [isLoading, setIsLoading] = useState(true)
 
   // Refs
   const previewRef = useRef<HTMLDivElement>(null)
@@ -103,314 +98,81 @@ export default function Home() {
   const currentVersionIndex = activeDocumentId ? currentVersionIndices[activeDocumentId] || 0 : 0
   const currentDocumentContent = currentDocumentVersions[currentVersionIndex] || ""
 
-  // Load documents from Supabase
-  useEffect(() => {
-    const loadDocuments = async () => {
-      setIsLoading(true)
-      try {
-        // Fetch documents from Supabase
-        const { data: documentsData, error: documentsError } = await supabase
-          .from("documents")
-          .select("*")
-          .order("updated_at", { ascending: false })
-
-        if (documentsError) {
-          console.error("Error fetching documents:", documentsError)
-          return
-        }
-
-        if (documentsData && documentsData.length > 0) {
-          // Convert Supabase documents to our Document type
-          const formattedDocuments = documentsData.map((doc) => ({
-            id: doc.id,
-            title: doc.title,
-            createdAt: new Date(doc.created_at),
-            updatedAt: new Date(doc.updated_at),
-          }))
-
-          setDocuments(formattedDocuments)
-
-          // Set the first document as active if none is selected
-          if (!activeDocumentId && formattedDocuments.length > 0) {
-            setActiveDocumentId(formattedDocuments[0].id)
-
-            // Load versions for the first document
-            await loadDocumentVersions(formattedDocuments[0].id)
-          }
-        }
-      } catch (error) {
-        console.error("Error loading documents:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadDocuments()
-  }, [])
-
-  // Load document versions when activeDocumentId changes
-  useEffect(() => {
-    if (activeDocumentId) {
-      loadDocumentVersions(activeDocumentId)
-    }
-  }, [activeDocumentId])
-
-  // Load document versions from Supabase
-  const loadDocumentVersions = async (documentId: string) => {
-    try {
-      // Fetch document versions from Supabase
-      const { data: versionsData, error: versionsError } = await supabase
-        .from("document_versions")
-        .select("*")
-        .eq("document_id", documentId)
-        .order("version_number", { ascending: true })
-
-      if (versionsError) {
-        console.error(`Error fetching versions for document ${documentId}:`, versionsError)
-        return
-      }
-
-      if (versionsData && versionsData.length > 0) {
-        // Store versions in state
-        const versions = versionsData.map((v) => v.content)
-        setDocumentVersions((prev) => ({
-          ...prev,
-          [documentId]: versions,
-        }))
-
-        // Set current version to the latest
-        setCurrentVersionIndices((prev) => ({
-          ...prev,
-          [documentId]: versions.length - 1,
-        }))
-
-        // Load missing fields for the latest version
-        const latestVersion = versions[versions.length - 1]
-        const extractedFields = extractMissingFields(latestVersion)
-        setMissingFields(extractedFields)
-
-        // Load field values for the document
-        await loadFieldValues(documentId)
-      } else {
-        // If no versions found, fetch the document content
-        const { data: documentData, error: documentError } = await supabase
-          .from("documents")
-          .select("content")
-          .eq("id", documentId)
-          .single()
-
-        if (documentError) {
-          console.error(`Error fetching document ${documentId}:`, documentError)
-          return
-        }
-
-        if (documentData) {
-          // Store the document content as the first version
-          setDocumentVersions((prev) => ({
-            ...prev,
-            [documentId]: [documentData.content],
-          }))
-
-          // Set current version to 0
-          setCurrentVersionIndices((prev) => ({
-            ...prev,
-            [documentId]: 0,
-          }))
-
-          // Extract missing fields
-          const extractedFields = extractMissingFields(documentData.content)
-          setMissingFields(extractedFields)
-
-          // Load field values for the document
-          await loadFieldValues(documentId)
-        }
-      }
-    } catch (error) {
-      console.error(`Error loading versions for document ${documentId}:`, error)
-    }
-  }
-
-  // Load field values from Supabase
-  const loadFieldValues = async (documentId: string) => {
-    try {
-      // Fetch missing fields from Supabase
-      const { data: fieldsData, error: fieldsError } = await supabase
-        .from("missing_fields")
-        .select("*")
-        .eq("document_id", documentId)
-
-      if (fieldsError) {
-        console.error(`Error fetching missing fields for document ${documentId}:`, fieldsError)
-        return
-      }
-
-      if (fieldsData && fieldsData.length > 0) {
-        // Convert to field values object
-        const values: Record<string, string> = {}
-        fieldsData.forEach((field) => {
-          if (field.field_value) {
-            values[field.field_name] = field.field_value
-          }
-        })
-
-        setFieldValues(values)
-      } else {
-        // Reset field values if none found
-        setFieldValues({})
-      }
-    } catch (error) {
-      console.error(`Error loading field values for document ${documentId}:`, error)
-    }
-  }
-
-  // Extract missing fields from content
-  const extractMissingFields = (content: string): string[] => {
-    const regex = /\[(.*?)\]/g
-    const matches = content.match(regex) || []
-
-    // Extract field names and remove duplicates
-    const fields = matches.map((match) => match.replace(/[[\]]/g, "").trim()).filter((field) => field.length > 0)
-
-    // Remove duplicates
-    return [...new Set(fields)]
-  }
-
   // Handle creating a new document
-  const handleCreateDocument = async () => {
-    try {
-      // Create a new document in Supabase
-      const { data, error } = await supabase
-        .from("documents")
-        .insert([
-          {
-            title: `New Document ${documents.length + 1}`,
-            content: "",
-            user_id: "anonymous",
-          },
-        ])
-        .select()
-        .single()
-
-      if (error) {
-        console.error("Error creating document:", error)
-        return
-      }
-
-      if (data) {
-        const newDoc: Document = {
-          id: data.id,
-          title: data.title,
-          createdAt: new Date(data.created_at),
-          updatedAt: new Date(data.updated_at),
-        }
-
-        setDocuments((prev) => [...prev, newDoc])
-        setActiveDocumentId(data.id)
-        setDocumentVersions({
-          ...documentVersions,
-          [data.id]: [],
-        })
-        setCurrentVersionIndices({
-          ...currentVersionIndices,
-          [data.id]: 0,
-        })
-        setMissingFields([])
-        setFieldValues({})
-        setPdfUrl("")
-        setDocxUrl("")
-        setImageUrl("")
-      }
-    } catch (error) {
-      console.error("Error creating document:", error)
+  const handleCreateDocument = () => {
+    const newId = `doc_${Date.now()}`
+    const newDoc: Document = {
+      id: newId,
+      title: `New Document ${documents.length + 1}`,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }
+
+    setDocuments([...documents, newDoc])
+    setActiveDocumentId(newId)
+    setDocumentVersions({
+      ...documentVersions,
+      [newId]: [],
+    })
+    setCurrentVersionIndices({
+      ...currentVersionIndices,
+      [newId]: 0,
+    })
+    setMissingFields([])
+    setFieldValues({})
+    setPdfUrl("")
+    setDocxUrl("")
+    setImageUrl("")
   }
 
   // Handle selecting a document
   const handleSelectDocument = (documentId: string) => {
     setActiveDocumentId(documentId)
-    // The versions and missing fields will be loaded by the useEffect
+    setMissingFields(extractMissingFields(documentVersions[documentId]?.[currentVersionIndices[documentId] || 0] || ""))
+    setFieldValues({})
     setPdfUrl("")
     setDocxUrl("")
     setImageUrl("")
   }
 
   // Handle deleting a document
-  const handleDeleteDocument = async (documentId: string) => {
-    try {
-      // Delete the document from Supabase
-      const { error } = await supabase.from("documents").delete().eq("id", documentId)
+  const handleDeleteDocument = (documentId: string) => {
+    const updatedDocuments = documents.filter((doc) => doc.id !== documentId)
+    setDocuments(updatedDocuments)
 
-      if (error) {
-        console.error(`Error deleting document with id ${documentId}:`, error)
-        return
+    // Remove document versions
+    const updatedVersions = { ...documentVersions }
+    delete updatedVersions[documentId]
+    setDocumentVersions(updatedVersions)
+
+    // Remove version index
+    const updatedIndices = { ...currentVersionIndices }
+    delete updatedIndices[documentId]
+    setCurrentVersionIndices(updatedIndices)
+
+    // If the active document was deleted, set a new active document
+    if (activeDocumentId === documentId) {
+      const newActiveId = updatedDocuments.length > 0 ? updatedDocuments[0].id : null
+      setActiveDocumentId(newActiveId)
+      if (newActiveId) {
+        setMissingFields(
+          extractMissingFields(documentVersions[newActiveId]?.[currentVersionIndices[newActiveId] || 0] || ""),
+        )
+      } else {
+        setMissingFields([])
       }
-
-      // Update local state
-      const updatedDocuments = documents.filter((doc) => doc.id !== documentId)
-      setDocuments(updatedDocuments)
-
-      // Remove document versions
-      const updatedVersions = { ...documentVersions }
-      delete updatedVersions[documentId]
-      setDocumentVersions(updatedVersions)
-
-      // Remove version index
-      const updatedIndices = { ...currentVersionIndices }
-      delete updatedIndices[documentId]
-      setCurrentVersionIndices(updatedIndices)
-
-      // If the active document was deleted, set a new active document
-      if (activeDocumentId === documentId) {
-        const newActiveId = updatedDocuments.length > 0 ? updatedDocuments[0].id : null
-        setActiveDocumentId(newActiveId)
-        if (newActiveId) {
-          await loadDocumentVersions(newActiveId)
-        } else {
-          setMissingFields([])
-          setFieldValues({})
-        }
-        setPdfUrl("")
-        setDocxUrl("")
-        setImageUrl("")
-      }
-    } catch (error) {
-      console.error(`Error deleting document with id ${documentId}:`, error)
+      setFieldValues({})
+      setPdfUrl("")
+      setDocxUrl("")
+      setImageUrl("")
     }
   }
 
   // Handle renaming a document
-  const handleRenameDocument = async (documentId: string, newTitle: string) => {
-    try {
-      // Update the document in Supabase
-      const { data, error } = await supabase
-        .from("documents")
-        .update({ title: newTitle })
-        .eq("id", documentId)
-        .select()
-        .single()
-
-      if (error) {
-        console.error(`Error renaming document with id ${documentId}:`, error)
-        return
-      }
-
-      if (data) {
-        // Update local state
-        setDocuments((docs) =>
-          docs.map((doc) =>
-            doc.id === documentId
-              ? {
-                  ...doc,
-                  title: newTitle,
-                  updatedAt: new Date(data.updated_at),
-                }
-              : doc,
-          ),
-        )
-      }
-    } catch (error) {
-      console.error(`Error renaming document with id ${documentId}:`, error)
-    }
+  const handleRenameDocument = (documentId: string, newTitle: string) => {
+    setDocuments((docs) =>
+      docs.map((doc) => (doc.id === documentId ? { ...doc, title: newTitle, updatedAt: new Date() } : doc)),
+    )
   }
 
   // Handle document generation
@@ -418,7 +180,7 @@ export default function Home() {
     try {
       if (!activeDocumentId) {
         // Create a new document if none is active
-        await handleCreateDocument()
+        handleCreateDocument()
       }
 
       setIsGenerating(true)
@@ -489,93 +251,32 @@ export default function Home() {
 
         const extractedFields = extractMissingFields(cleanedContent)
 
+        // Set the final content as the first version
         if (activeDocumentId) {
-          // Update the document in Supabase
-          const { data: updatedDoc, error: updateError } = await supabase
-            .from("documents")
-            .update({
-              content: cleanedContent,
-              title: prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt,
-            })
-            .eq("id", activeDocumentId)
-            .select()
-            .single()
+          setDocumentVersions((prev) => ({
+            ...prev,
+            [activeDocumentId]: [cleanedContent],
+          }))
+          setCurrentVersionIndices((prev) => ({
+            ...prev,
+            [activeDocumentId]: 0,
+          }))
+          setMissingFields(extractedFields)
 
-          if (updateError) {
-            console.error(`Error updating document ${activeDocumentId}:`, updateError)
-          } else if (updatedDoc) {
-            // Update document in local state
-            setDocuments((docs) =>
-              docs.map((doc) =>
-                doc.id === activeDocumentId
-                  ? {
-                      ...doc,
-                      title: updatedDoc.title,
-                      updatedAt: new Date(updatedDoc.updated_at),
-                    }
-                  : doc,
-              ),
-            )
+          // Update document title based on content if it's a new document
+          const currentDoc = documents.find((doc) => doc.id === activeDocumentId)
+          if (currentDoc && currentDoc.title.startsWith("New Document")) {
+            const titleMatch =
+              cleanedContent.match(/<h1[^>]*>(.*?)<\/h1>/i) ||
+              cleanedContent.match(/<title[^>]*>(.*?)<\/title>/i) ||
+              cleanedContent.match(/<strong[^>]*>(.*?)<\/strong>/i)
 
-            // Create a new version in Supabase
-            const { data: versions, error: versionsError } = await supabase
-              .from("document_versions")
-              .select("version_number")
-              .eq("document_id", activeDocumentId)
-              .order("version_number", { ascending: false })
-              .limit(1)
-
-            if (versionsError) {
-              console.error(`Error fetching versions for document ${activeDocumentId}:`, versionsError)
-            } else {
-              const nextVersionNumber = versions && versions.length > 0 ? versions[0].version_number + 1 : 0
-
-              const { error: insertError } = await supabase.from("document_versions").insert([
-                {
-                  document_id: activeDocumentId,
-                  content: cleanedContent,
-                  version_number: nextVersionNumber,
-                },
-              ])
-
-              if (insertError) {
-                console.error(`Error creating version for document ${activeDocumentId}:`, insertError)
-              } else {
-                // Update versions in local state
-                setDocumentVersions((prev) => ({
-                  ...prev,
-                  [activeDocumentId]: [...(prev[activeDocumentId] || []), cleanedContent],
-                }))
-
-                setCurrentVersionIndices((prev) => ({
-                  ...prev,
-                  [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
-                }))
+            if (titleMatch && titleMatch[1]) {
+              const extractedTitle = titleMatch[1].replace(/<[^>]*>/g, "").trim()
+              if (extractedTitle) {
+                handleRenameDocument(activeDocumentId, extractedTitle)
               }
             }
-
-            // Create missing fields in Supabase
-            if (extractedFields.length > 0) {
-              // Delete existing missing fields
-              await supabase.from("missing_fields").delete().eq("document_id", activeDocumentId)
-
-              // Insert new missing fields
-              const fieldsToInsert = extractedFields.map((fieldName) => ({
-                document_id: activeDocumentId,
-                field_name: fieldName,
-                field_value: null,
-              }))
-
-              const { error: fieldsError } = await supabase.from("missing_fields").insert(fieldsToInsert)
-
-              if (fieldsError) {
-                console.error(`Error creating missing fields for document ${activeDocumentId}:`, fieldsError)
-              }
-            }
-
-            // Update missing fields in local state
-            setMissingFields(extractedFields)
-            setFieldValues({})
           }
         }
       } catch (error) {
@@ -593,56 +294,40 @@ export default function Home() {
 
             const extractedFields = extractMissingFields(cleanedContent)
 
-            // Update the document in Supabase
-            await supabase.from("documents").update({ content: cleanedContent }).eq("id", activeDocumentId)
-
-            // Create a new version in Supabase
-            const { data: versions } = await supabase
-              .from("document_versions")
-              .select("version_number")
-              .eq("document_id", activeDocumentId)
-              .order("version_number", { ascending: false })
-              .limit(1)
-
-            const nextVersionNumber = versions && versions.length > 0 ? versions[0].version_number + 1 : 0
-
-            await supabase.from("document_versions").insert([
-              {
-                document_id: activeDocumentId,
-                content: cleanedContent,
-                version_number: nextVersionNumber,
-              },
-            ])
-
-            // Update versions in local state
             setDocumentVersions((prev) => ({
               ...prev,
-              [activeDocumentId]: [...(prev[activeDocumentId] || []), cleanedContent],
+              [activeDocumentId]: [cleanedContent],
             }))
-
             setCurrentVersionIndices((prev) => ({
               ...prev,
-              [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
+              [activeDocumentId]: 0,
             }))
-
-            // Create missing fields in Supabase
-            if (extractedFields.length > 0) {
-              // Delete existing missing fields
-              await supabase.from("missing_fields").delete().eq("document_id", activeDocumentId)
-
-              // Insert new missing fields
-              const fieldsToInsert = extractedFields.map((fieldName) => ({
-                document_id: activeDocumentId,
-                field_name: fieldName,
-                field_value: null,
-              }))
-
-              await supabase.from("missing_fields").insert(fieldsToInsert)
-            }
-
-            // Update missing fields in local state
             setMissingFields(extractedFields)
-            setFieldValues({})
+          } else {
+            // Fallback to non-streaming generation
+            try {
+              const result = await generateDocument(prompt)
+              console.log("Document generation successful")
+
+              if (activeDocumentId) {
+                // Clean up any \`\`\`html and \`\`\` markers
+                let cleanedContent = result.content
+                cleanedContent = cleanedContent.replace(/```html/g, "")
+                cleanedContent = cleanedContent.replace(/```/g, "")
+
+                setDocumentVersions((prev) => ({
+                  ...prev,
+                  [activeDocumentId]: [cleanedContent],
+                }))
+                setCurrentVersionIndices((prev) => ({
+                  ...prev,
+                  [activeDocumentId]: 0,
+                }))
+                setMissingFields(result.missingFields || [])
+              }
+            } catch (fallbackError) {
+              console.error("Error in fallback document generation:", fallbackError)
+            }
           }
         }
       }
@@ -676,89 +361,29 @@ export default function Home() {
       }
 
       // Call the update API
-      const result = await updateDocument(activeDocumentId, currentContent, updateInstructions)
+      const result = await updateDocument(currentContent, updateInstructions)
 
       // Clean up any \`\`\`html and \`\`\` markers
       let cleanedContent = result.content
       cleanedContent = cleanedContent.replace(/```html/g, "")
       cleanedContent = cleanedContent.replace(/```/g, "")
 
-      // Update the document in Supabase
-      const { data: updatedDoc, error: updateError } = await supabase
-        .from("documents")
-        .update({ content: cleanedContent })
-        .eq("id", activeDocumentId)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error(`Error updating document ${activeDocumentId}:`, updateError)
-      } else if (updatedDoc) {
-        // Create a new version in Supabase
-        const { data: versions, error: versionsError } = await supabase
-          .from("document_versions")
-          .select("version_number")
-          .eq("document_id", activeDocumentId)
-          .order("version_number", { ascending: false })
-          .limit(1)
-
-        if (versionsError) {
-          console.error(`Error fetching versions for document ${activeDocumentId}:`, versionsError)
-        } else {
-          const nextVersionNumber = versions && versions.length > 0 ? versions[0].version_number + 1 : 0
-
-          const { error: insertError } = await supabase.from("document_versions").insert([
-            {
-              document_id: activeDocumentId,
-              content: cleanedContent,
-              version_number: nextVersionNumber,
-            },
-          ])
-
-          if (insertError) {
-            console.error(`Error creating version for document ${activeDocumentId}:`, insertError)
-          } else {
-            // Add the new version to the versions array
-            setDocumentVersions((prev) => {
-              const currentVersions = prev[activeDocumentId] || []
-              return {
-                ...prev,
-                [activeDocumentId]: [...currentVersions, cleanedContent],
-              }
-            })
-
-            // Set to the new version
-            setCurrentVersionIndices((prev) => ({
-              ...prev,
-              [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
-            }))
-          }
+      // Add the new version to the versions array
+      setDocumentVersions((prev) => {
+        const currentVersions = prev[activeDocumentId] || []
+        return {
+          ...prev,
+          [activeDocumentId]: [...currentVersions, cleanedContent],
         }
+      })
 
-        // Update missing fields in Supabase
-        const extractedFields = extractMissingFields(cleanedContent)
-        if (extractedFields.length > 0) {
-          // Delete existing missing fields
-          await supabase.from("missing_fields").delete().eq("document_id", activeDocumentId)
+      // Set to the new version
+      setCurrentVersionIndices((prev) => ({
+        ...prev,
+        [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
+      }))
 
-          // Insert new missing fields
-          const fieldsToInsert = extractedFields.map((fieldName) => ({
-            document_id: activeDocumentId,
-            field_name: fieldName,
-            field_value: null,
-          }))
-
-          const { error: fieldsError } = await supabase.from("missing_fields").insert(fieldsToInsert)
-
-          if (fieldsError) {
-            console.error(`Error creating missing fields for document ${activeDocumentId}:`, fieldsError)
-          }
-        }
-
-        // Update missing fields in local state
-        setMissingFields(extractedFields)
-        setFieldValues({})
-      }
+      setMissingFields(result.missingFields || [])
     } catch (error) {
       console.error("Error updating document:", error)
     } finally {
@@ -768,98 +393,35 @@ export default function Home() {
   }
 
   // Handle direct content update from the editor
-  const handleContentUpdate = async (newContent: string) => {
+  const handleContentUpdate = (newContent: string) => {
     if (!activeDocumentId) return
 
-    try {
-      // Update the document in Supabase
-      const { data: updatedDoc, error: updateError } = await supabase
-        .from("documents")
-        .update({ content: newContent })
-        .eq("id", activeDocumentId)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error(`Error updating document ${activeDocumentId}:`, updateError)
-        return
+    // Add the edited content as a new version
+    setDocumentVersions((prev) => {
+      const currentVersions = prev[activeDocumentId] || []
+      return {
+        ...prev,
+        [activeDocumentId]: [...currentVersions, newContent],
       }
+    })
 
-      if (updatedDoc) {
-        // Create a new version in Supabase
-        const { data: versions, error: versionsError } = await supabase
-          .from("document_versions")
-          .select("version_number")
-          .eq("document_id", activeDocumentId)
-          .order("version_number", { ascending: false })
-          .limit(1)
+    // Set to the new version
+    setCurrentVersionIndices((prev) => ({
+      ...prev,
+      [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
+    }))
 
-        if (versionsError) {
-          console.error(`Error fetching versions for document ${activeDocumentId}:`, versionsError)
-          return
-        }
+    // Update missing fields
+    setMissingFields(extractMissingFields(newContent))
 
-        const nextVersionNumber = versions && versions.length > 0 ? versions[0].version_number + 1 : 0
-
-        const { error: insertError } = await supabase.from("document_versions").insert([
-          {
-            document_id: activeDocumentId,
-            content: newContent,
-            version_number: nextVersionNumber,
-          },
-        ])
-
-        if (insertError) {
-          console.error(`Error creating version for document ${activeDocumentId}:`, insertError)
-          return
-        }
-
-        // Add the edited content as a new version
-        setDocumentVersions((prev) => {
-          const currentVersions = prev[activeDocumentId] || []
-          return {
-            ...prev,
-            [activeDocumentId]: [...currentVersions, newContent],
-          }
-        })
-
-        // Set to the new version
-        setCurrentVersionIndices((prev) => ({
-          ...prev,
-          [activeDocumentId]: (prev[activeDocumentId] || 0) + 1,
-        }))
-
-        // Update missing fields
-        const extractedFields = extractMissingFields(newContent)
-        setMissingFields(extractedFields)
-
-        // Update missing fields in Supabase
-        if (extractedFields.length > 0) {
-          // Delete existing missing fields
-          await supabase.from("missing_fields").delete().eq("document_id", activeDocumentId)
-
-          // Insert new missing fields
-          const fieldsToInsert = extractedFields.map((fieldName) => ({
-            document_id: activeDocumentId,
-            field_name: fieldName,
-            field_value: null,
-          }))
-
-          await supabase.from("missing_fields").insert(fieldsToInsert)
-        }
-
-        // Reset export URLs
-        setPdfUrl("")
-        setDocxUrl("")
-        setImageUrl("")
-      }
-    } catch (error) {
-      console.error("Error updating document content:", error)
-    }
+    // Reset export URLs
+    setPdfUrl("")
+    setDocxUrl("")
+    setImageUrl("")
   }
 
   // Handle version change
-  const handleVersionChange = async (versionIndex: number) => {
+  const handleVersionChange = (versionIndex: number) => {
     if (!activeDocumentId) return
 
     setCurrentVersionIndices((prev) => ({
@@ -869,72 +431,19 @@ export default function Home() {
 
     // Update missing fields for the selected version
     const versionContent = documentVersions[activeDocumentId]?.[versionIndex] || ""
-    const extractedFields = extractMissingFields(versionContent)
-    setMissingFields(extractedFields)
-
-    // Reset field values
+    setMissingFields(extractMissingFields(versionContent))
     setFieldValues({})
-
-    // Load field values for the document
-    await loadFieldValues(activeDocumentId)
-
-    // Reset export URLs
     setPdfUrl("")
     setDocxUrl("")
     setImageUrl("")
   }
 
   // Handle field change
-  const handleFieldChange = async (field: string, value: string) => {
-    if (!activeDocumentId) return
-
-    try {
-      // Update field values in local state
-      setFieldValues((prev) => ({
-        ...prev,
-        [field]: value,
-      }))
-
-      // Find the missing field in Supabase
-      const { data: fieldData, error: fieldError } = await supabase
-        .from("missing_fields")
-        .select("id")
-        .eq("document_id", activeDocumentId)
-        .eq("field_name", field)
-        .single()
-
-      if (fieldError) {
-        console.error(`Error finding missing field ${field} for document ${activeDocumentId}:`, fieldError)
-        return
-      }
-
-      if (fieldData) {
-        // Update the field value in Supabase
-        const { error: updateError } = await supabase
-          .from("missing_fields")
-          .update({ field_value: value })
-          .eq("id", fieldData.id)
-
-        if (updateError) {
-          console.error(`Error updating missing field ${field} for document ${activeDocumentId}:`, updateError)
-        }
-      } else {
-        // Create a new missing field
-        const { error: insertError } = await supabase.from("missing_fields").insert([
-          {
-            document_id: activeDocumentId,
-            field_name: field,
-            field_value: value,
-          },
-        ])
-
-        if (insertError) {
-          console.error(`Error creating missing field ${field} for document ${activeDocumentId}:`, insertError)
-        }
-      }
-    } catch (error) {
-      console.error(`Error updating field ${field}:`, error)
-    }
+  const handleFieldChange = (field: string, value: string) => {
+    setFieldValues((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
   }
 
   // Generate document for export
@@ -1257,12 +766,24 @@ export default function Home() {
     return styledContent
   }
 
+  // Extract missing fields from content
+  const extractMissingFields = (content: string): string[] => {
+    const regex = /\[(.*?)\]/g
+    const matches = content.match(regex) || []
+
+    // Extract field names and remove duplicates
+    const fields = matches.map((match) => match.replace(/[[\]]/g, "").trim()).filter((field) => field.length > 0)
+
+    // Remove duplicates
+    return [...new Set(fields)]
+  }
+
   // Effect to create initial document if none exists
   useEffect(() => {
-    if (documents.length === 0 && !isLoading) {
+    if (documents.length === 0) {
       handleCreateDocument()
     }
-  }, [documents.length, isLoading])
+  }, [])
 
   // Effect to handle URL prompt parameter
   useEffect(() => {
@@ -1270,14 +791,14 @@ export default function Home() {
       console.log("Found URL prompt:", urlPrompt)
 
       // Create a new document if none exists
-      if (documents.length === 0 && !isLoading) {
+      if (documents.length === 0) {
         handleCreateDocument()
       }
 
       // Make sure we're on the chat tab
       setActiveTab("chat")
     }
-  }, [urlPrompt, hasProcessedUrlPrompt, documents.length, isLoading])
+  }, [urlPrompt, hasProcessedUrlPrompt, documents.length])
 
   // Toggle sidebar for mobile
   const toggleSidebar = () => {
