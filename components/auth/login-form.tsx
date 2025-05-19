@@ -16,6 +16,8 @@ const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
 })
 
+type FormValues = z.infer<typeof formSchema>
+
 interface LoginFormProps {
   onSuccess?: () => void
 }
@@ -25,7 +27,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: "",
@@ -33,7 +35,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     },
   })
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: FormValues) {
     setIsLoading(true)
     setError(null)
 
@@ -64,8 +66,9 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="email"
@@ -92,10 +95,15 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full bg-gradient-green" disabled={isLoading}>
+          <Button
+            type="button"
+            onClick={form.handleSubmit(onSubmit)}
+            className="w-full bg-gradient-green"
+            disabled={isLoading}
+          >
             {isLoading ? "Signing in..." : "Sign In"}
           </Button>
-        </form>
+        </div>
       </Form>
     </div>
   )

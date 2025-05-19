@@ -1,18 +1,18 @@
--- Create profiles table first (since it doesn't exist yet)
+-- Create profiles table if it doesn't exist
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
   username TEXT,
+  email TEXT,
   avatar_url TEXT,
   credits INTEGER DEFAULT 100,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create documents table
+-- Create documents table if it doesn't exist
 CREATE TABLE IF NOT EXISTS public.documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   content TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

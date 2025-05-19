@@ -24,11 +24,11 @@ export default function AuthModal({ isOpen, onClose, defaultTab = "login", onSuc
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold">
-            {activeTab === "login" ? "Welcome Back" : "Create an Account"}
+            {activeTab === "login" ? "Welcome to WriteDoc" : "Create a WriteDoc Account"}
           </DialogTitle>
         </DialogHeader>
         <Tabs
