@@ -1,8 +1,6 @@
 "use server"
 
-import { logUsage } from "@/lib/db"
-
-export async function generateDocument(prompt: string, userId: number) {
+export async function generateDocument(prompt: string) {
   try {
     console.log("Starting document generation with OpenRouter API")
 
@@ -73,10 +71,6 @@ export async function generateDocument(prompt: string, userId: number) {
       // Extract missing fields from the generated content
       const missingFields = extractMissingFields(generatedContent)
 
-      // Log usage and deduct credits (5 credits for document generation)
-      const documentId = "generated_doc_" + Date.now() // Replace with actual document ID if applicable
-      await logUsage(userId, "document_generation", documentId, 5)
-
       return {
         content: generatedContent,
         missingFields,
@@ -96,17 +90,17 @@ export async function generateDocument(prompt: string, userId: number) {
 }
 
 // Function to update an existing document
-export async function updateDocument(content: string, instructions: string, userId: number) {
+export async function updateDocument(existingContent: string, updateInstructions: string) {
   try {
     console.log("Starting document update with OpenRouter API")
 
     // Create a more detailed prompt for the AI
     const enhancedPrompt = `
-  I have an existing HTML document that I need you to update based on these instructions: "${instructions}"
+  I have an existing HTML document that I need you to update based on these instructions: "${updateInstructions}"
   
   Here is the current document content:
   
-  ${content}
+  ${existingContent}
   
   Please make the requested changes while preserving the overall structure and styling.
   Return the complete updated HTML document.
@@ -120,8 +114,8 @@ export async function updateDocument(content: string, instructions: string, user
     if (!OPENROUTER_API_KEY) {
       console.log("API key is missing, falling back to mock update")
       return {
-        content: content,
-        missingFields: extractMissingFields(content),
+        content: existingContent,
+        missingFields: extractMissingFields(existingContent),
       }
     }
 
@@ -165,10 +159,6 @@ export async function updateDocument(content: string, instructions: string, user
 
       // Extract missing fields from the updated content
       const missingFields = extractMissingFields(updatedContent)
-
-      // Log usage and deduct credits (3 credits for document update)
-      const documentId = "updated_doc_" + Date.now() // Replace with actual document ID if applicable
-      await logUsage(userId, "document_update", documentId, 3)
 
       return {
         content: updatedContent,
