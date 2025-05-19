@@ -73,9 +73,16 @@ export function generateId(): string {
 }
 
 // User management
-export async function createUser(email: string, password: string, fullName: string) {
+// Update the createUser function to accept role and credits parameters
+export async function createUser(
+  email: string,
+  password: string,
+  fullName: string,
+  role = "user",
+  initialCredits = 100,
+) {
   await initDb()
-  console.log(`Creating user with email: ${email}`)
+  console.log(`Creating user with email: ${email}, role: ${role}`)
 
   // Check if user already exists
   const existingUser = db.users.find((user) => user.email === email)
@@ -93,8 +100,8 @@ export async function createUser(email: string, password: string, fullName: stri
       password_hash: hashedPassword,
       full_name: fullName,
       avatar_url: null,
-      credits: 100,
-      role: "user",
+      credits: initialCredits,
+      role: role,
       created_at: now(),
       updated_at: now(),
     }

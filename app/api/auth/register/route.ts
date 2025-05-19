@@ -1,59 +1,85 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { createUser, getUserByEmail } from "@/lib/memory-db"
-import { generateToken } from "@/lib/auth"
 import { cookies } from "next/headers"
+import { sign } from "jsonwebtoken"
 
-export async function POST(request: Request) {
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
+
+export async function POST(request: NextRequest) {
+  console.log("Register API route called")
+
   try {
-    const { email, password, fullName } = await request.json()
+    // Parse request body
+    const body = await request.json()
+    console.log("Request body:", body)
+
+    const { email, password, fullName } = body
 
     // Validate input
     if (!email || !password || !fullName) {
-      return NextResponse.json(
-        { success: false, error: "Email, password, and full name are required" },
-        { status: 400 },
-      )
+      console.log("Missing required fields")
+      return NextResponse.json({ error: "Email, password, and full name are required" }, { status: 400 })
     }
 
     // Check if user already exists
+    console.log("Checking if user exists")
     const existingUser = await getUserByEmail(email)
     if (existingUser) {
-      return NextResponse.json({ success: false, error: "User with this email already exists" }, { status: 409 })
+      console.log("User already exists")
+      return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
     }
 
-    // Create user
-    const user = await createUser(email, password, fullName)
+    // Create new user
+    console.log("Creating new user")
 
-    // Generate JWT token
-    const token = generateToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    })
+    // Special case for ezzakyyy@gmail.com - make them an admin
+    const isAdmin = email.toLowerCase() === "ezzakyyy@gmail.com"
+    const role = isAdmin ? "admin" : "user"
+    const credits = isAdmin ? 1000 : 100
+
+    const user = await createUser(email, password, fullName, role, credits)
+    console.log("User created:", user)
+
+    // Create JWT token
+    console.log("Creating JWT token")
+    const token = sign(
+      {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    )
 
     // Set cookie
-    cookies().set("auth_token", token, {
+    console.log("Setting auth cookie")
+    cookies().set({
+      name: "auth_token",
+      value: token,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
     })
 
-    // Return user data
+    // Return user data (without password)
+    console.log("Returning user data")
     return NextResponse.json({
-      success: true,
       user: {
         id: user.id,
         email: user.email,
         fullName: user.full_name,
-        avatarUrl: user.avatar_url,
         credits: user.credits,
         role: user.role,
       },
     })
   } catch (error) {
     console.error("Registration error:", error)
-    return NextResponse.json({ success: false, error: "An error occurred during registration" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Failed to register user: " + (error instanceof Error ? error.message : String(error)) },
+      { status: 500 },
+    )
   }
 }
