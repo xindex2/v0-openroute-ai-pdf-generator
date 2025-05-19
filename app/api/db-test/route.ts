@@ -6,10 +6,10 @@ export async function GET() {
     console.log("Testing SQLite database connection")
 
     // Ensure admin user exists
-    createAdminUser()
+    await createAdminUser()
 
     // Try to get the admin user
-    const adminUser = getUserByEmail("admin@example.com")
+    const adminUser = await getUserByEmail("admin@example.com")
 
     return NextResponse.json({
       success: true,

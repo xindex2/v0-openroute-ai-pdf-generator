@@ -1,7 +1,9 @@
-import { Database } from "better-sqlite3"
+import { open } from "sqlite"
+import sqlite3 from "sqlite3"
 import bcrypt from "bcryptjs"
 import fs from "fs"
 import path from "path"
+import { v4 as uuidv4 } from "uuid"
 
 // Ensure the data directory exists
 const DATA_DIR = path.join(process.cwd(), "data")
@@ -13,31 +15,26 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_PATH = path.join(DATA_DIR, "database.sqlite")
 console.log(`Initializing SQLite database at: ${DB_PATH}`)
 
-let db: Database
+// Database connection promise
+let dbPromise: Promise<any> | null = null
 
-// This is a workaround for Next.js hot reloading
-// We don't want to create multiple database connections
-declare global {
-  var _db: Database | undefined
-}
-
-if (process.env.NODE_ENV === "development") {
-  if (!global._db) {
-    global._db = new Database(DB_PATH)
-    global._db.pragma("journal_mode = WAL")
-    global._db.pragma("foreign_keys = ON")
+// Get database connection
+export async function getDb() {
+  if (!dbPromise) {
+    dbPromise = open({
+      filename: DB_PATH,
+      driver: sqlite3.Database,
+    })
   }
-  db = global._db
-} else {
-  db = new Database(DB_PATH)
-  db.pragma("journal_mode = WAL")
-  db.pragma("foreign_keys = ON")
+  return dbPromise
 }
 
 // Initialize database schema
-export function initializeDatabase() {
+export async function initializeDatabase() {
+  const db = await getDb()
+
   // Create users table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
@@ -52,7 +49,7 @@ export function initializeDatabase() {
   `)
 
   // Create documents table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -65,7 +62,7 @@ export function initializeDatabase() {
   `)
 
   // Create document_versions table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS document_versions (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
@@ -78,7 +75,7 @@ export function initializeDatabase() {
   `)
 
   // Create missing_fields table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS missing_fields (
       id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
@@ -92,7 +89,7 @@ export function initializeDatabase() {
   `)
 
   // Create credit_transactions table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS credit_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -105,7 +102,7 @@ export function initializeDatabase() {
   `)
 
   // Create usage_logs table
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS usage_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -119,7 +116,7 @@ export function initializeDatabase() {
   `)
 
   // Create triggers for updated_at
-  db.exec(`
+  await db.exec(`
     CREATE TRIGGER IF NOT EXISTS update_users_updated_at
     AFTER UPDATE ON users
     FOR EACH ROW
@@ -128,7 +125,7 @@ export function initializeDatabase() {
     END
   `)
 
-  db.exec(`
+  await db.exec(`
     CREATE TRIGGER IF NOT EXISTS update_documents_updated_at
     AFTER UPDATE ON documents
     FOR EACH ROW
@@ -137,7 +134,7 @@ export function initializeDatabase() {
     END
   `)
 
-  db.exec(`
+  await db.exec(`
     CREATE TRIGGER IF NOT EXISTS update_missing_fields_updated_at
     AFTER UPDATE ON missing_fields
     FOR EACH ROW
@@ -147,13 +144,6 @@ export function initializeDatabase() {
   `)
 
   console.log("Database schema initialized")
-}
-
-// Initialize the database
-try {
-  initializeDatabase()
-} catch (error) {
-  console.error("Error initializing database:", error)
 }
 
 // User authentication helpers
@@ -167,75 +157,82 @@ export async function comparePasswords(password: string, hashedPassword: string)
 
 // Generate a UUID
 export function generateId(): string {
-  return crypto.randomUUID()
+  return uuidv4()
 }
 
 // User management
 export async function createUser(email: string, password: string, fullName: string) {
   console.log(`Creating user with email: ${email}`)
   try {
+    const db = await getDb()
     const hashedPassword = await hashPassword(password)
 
-    const stmt = db.prepare(
+    const result = await db.run(
       `INSERT INTO users (email, password_hash, full_name, credits, role)
-       VALUES (?, ?, ?, 100, 'user')
-       RETURNING id, email, full_name, credits, role, created_at`,
+       VALUES (?, ?, ?, 100, 'user')`,
+      [email, hashedPassword, fullName],
     )
 
-    const result = stmt.get(email, hashedPassword, fullName) as any
+    const user = await db.get(
+      `SELECT id, email, full_name, credits, role, created_at
+       FROM users
+       WHERE id = ?`,
+      [result.lastID],
+    )
 
-    console.log("User created successfully:", result)
-    return result
+    console.log("User created successfully:", user)
+    return user
   } catch (error) {
     console.error("Error creating user:", error)
     throw error
   }
 }
 
-export function getUserByEmail(email: string) {
+export async function getUserByEmail(email: string) {
   console.log(`Looking up user with email: ${email}`)
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    const user = await db.get(
       `SELECT id, email, password_hash, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        WHERE email = ?`,
+      [email],
     )
 
-    const result = stmt.get(email) as any
-
-    console.log("User lookup result:", result ? "User found" : "User not found")
-    return result || null
+    console.log("User lookup result:", user ? "User found" : "User not found")
+    return user || null
   } catch (error) {
     console.error("Error looking up user:", error)
     throw error
   }
 }
 
-export function getUserById(id: number) {
+export async function getUserById(id: number) {
   console.log(`Looking up user with id: ${id}`)
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    const user = await db.get(
       `SELECT id, email, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        WHERE id = ?`,
+      [id],
     )
 
-    const result = stmt.get(id) as any
-
-    console.log("User lookup result:", result ? "User found" : "User not found")
-    return result || null
+    console.log("User lookup result:", user ? "User found" : "User not found")
+    return user || null
   } catch (error) {
     console.error("Error looking up user:", error)
     throw error
   }
 }
 
-export function updateUserProfile(userId: number, data: { fullName?: string; avatarUrl?: string }) {
+export async function updateUserProfile(userId: number, data: { fullName?: string; avatarUrl?: string }) {
   const { fullName, avatarUrl } = data
 
   if (!fullName && !avatarUrl) return null
 
   try {
+    const db = await getDb()
     let query = "UPDATE users SET "
     const params = []
 
@@ -250,11 +247,17 @@ export function updateUserProfile(userId: number, data: { fullName?: string; ava
       params.push(avatarUrl)
     }
 
-    query += " WHERE id = ? RETURNING id, email, full_name, avatar_url, credits, role"
+    query += " WHERE id = ?"
     params.push(userId)
 
-    const stmt = db.prepare(query)
-    return stmt.get(...params) as any
+    await db.run(query, params)
+
+    return await db.get(
+      `SELECT id, email, full_name, avatar_url, credits, role
+       FROM users
+       WHERE id = ?`,
+      [userId],
+    )
   } catch (error) {
     console.error("Error updating user profile:", error)
     throw error
@@ -262,59 +265,67 @@ export function updateUserProfile(userId: number, data: { fullName?: string; ava
 }
 
 // Document management
-export function getDocumentsByUserId(userId: number) {
+export async function getDocumentsByUserId(userId: number) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT id, title, user_id, created_at, updated_at
        FROM documents
        WHERE user_id = ?
        ORDER BY updated_at DESC`,
+      [userId],
     )
-
-    return stmt.all(userId) as any[]
   } catch (error) {
     console.error("Error getting documents:", error)
     throw error
   }
 }
 
-export function createDocument(userId: number, title: string, content: string) {
+export async function createDocument(userId: number, title: string, content: string) {
   try {
+    const db = await getDb()
     const id = generateId()
-    const stmt = db.prepare(
+
+    await db.run(
       `INSERT INTO documents (id, title, content, user_id)
-       VALUES (?, ?, ?, ?)
-       RETURNING id, title, user_id, created_at, updated_at`,
+       VALUES (?, ?, ?, ?)`,
+      [id, title, content, userId],
     )
 
-    return stmt.get(id, title, content, userId) as any
+    return await db.get(
+      `SELECT id, title, user_id, created_at, updated_at
+       FROM documents
+       WHERE id = ?`,
+      [id],
+    )
   } catch (error) {
     console.error("Error creating document:", error)
     throw error
   }
 }
 
-export function getDocumentById(id: string, userId: number) {
+export async function getDocumentById(id: string, userId: number) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.get(
       `SELECT id, title, content, user_id, created_at, updated_at
        FROM documents
        WHERE id = ? AND user_id = ?`,
+      [id, userId],
     )
-
-    return (stmt.get(id, userId) as any) || null
   } catch (error) {
     console.error("Error getting document:", error)
     throw error
   }
 }
 
-export function updateDocument(id: string, userId: number, data: { title?: string; content?: string }) {
+export async function updateDocument(id: string, userId: number, data: { title?: string; content?: string }) {
   const { title, content } = data
 
   if (!title && !content) return null
 
   try {
+    const db = await getDb()
     let query = "UPDATE documents SET "
     const params = []
 
@@ -329,26 +340,33 @@ export function updateDocument(id: string, userId: number, data: { title?: strin
       params.push(content)
     }
 
-    query += " WHERE id = ? AND user_id = ? RETURNING id, title, content, user_id, created_at, updated_at"
+    query += " WHERE id = ? AND user_id = ?"
     params.push(id, userId)
 
-    const stmt = db.prepare(query)
-    return stmt.get(...params) as any
+    await db.run(query, params)
+
+    return await db.get(
+      `SELECT id, title, content, user_id, created_at, updated_at
+       FROM documents
+       WHERE id = ?`,
+      [id],
+    )
   } catch (error) {
     console.error("Error updating document:", error)
     throw error
   }
 }
 
-export function deleteDocument(id: string, userId: number) {
+export async function deleteDocument(id: string, userId: number) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    await db.run(
       `DELETE FROM documents
-       WHERE id = ? AND user_id = ?
-       RETURNING id`,
+       WHERE id = ? AND user_id = ?`,
+      [id, userId],
     )
 
-    return (stmt.get(id, userId) as any) || null
+    return { id }
   } catch (error) {
     console.error("Error deleting document:", error)
     throw error
@@ -356,32 +374,39 @@ export function deleteDocument(id: string, userId: number) {
 }
 
 // Document versions
-export function getDocumentVersions(documentId: string) {
+export async function getDocumentVersions(documentId: string) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT id, document_id, content, version_number, created_at
        FROM document_versions
        WHERE document_id = ?
        ORDER BY version_number ASC`,
+      [documentId],
     )
-
-    return stmt.all(documentId) as any[]
   } catch (error) {
     console.error("Error getting document versions:", error)
     throw error
   }
 }
 
-export function createDocumentVersion(documentId: string, content: string, versionNumber: number) {
+export async function createDocumentVersion(documentId: string, content: string, versionNumber: number) {
   try {
+    const db = await getDb()
     const id = generateId()
-    const stmt = db.prepare(
+
+    await db.run(
       `INSERT INTO document_versions (id, document_id, content, version_number)
-       VALUES (?, ?, ?, ?)
-       RETURNING id, document_id, content, version_number, created_at`,
+       VALUES (?, ?, ?, ?)`,
+      [id, documentId, content, versionNumber],
     )
 
-    return stmt.get(id, documentId, content, versionNumber) as any
+    return await db.get(
+      `SELECT id, document_id, content, version_number, created_at
+       FROM document_versions
+       WHERE id = ?`,
+      [id],
+    )
   } catch (error) {
     console.error("Error creating document version:", error)
     throw error
@@ -389,31 +414,37 @@ export function createDocumentVersion(documentId: string, content: string, versi
 }
 
 // Missing fields
-export function getMissingFields(documentId: string) {
+export async function getMissingFields(documentId: string) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT id, document_id, field_name, field_value, created_at, updated_at
        FROM missing_fields
        WHERE document_id = ?`,
+      [documentId],
     )
-
-    return stmt.all(documentId) as any[]
   } catch (error) {
     console.error("Error getting missing fields:", error)
     throw error
   }
 }
 
-export function updateMissingField(id: string, value: string) {
+export async function updateMissingField(id: string, value: string) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    await db.run(
       `UPDATE missing_fields
        SET field_value = ?
-       WHERE id = ?
-       RETURNING id, document_id, field_name, field_value, updated_at`,
+       WHERE id = ?`,
+      [value, id],
     )
 
-    return stmt.get(value, id) as any
+    return await db.get(
+      `SELECT id, document_id, field_name, field_value, updated_at
+       FROM missing_fields
+       WHERE id = ?`,
+      [id],
+    )
   } catch (error) {
     console.error("Error updating missing field:", error)
     throw error
@@ -421,15 +452,15 @@ export function updateMissingField(id: string, value: string) {
 }
 
 // Credit management
-export function getUserCredits(userId: number) {
+export async function getUserCredits(userId: number) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    const result = await db.get(
       `SELECT credits
        FROM users
        WHERE id = ?`,
+      [userId],
     )
-
-    const result = stmt.get(userId) as any
     return result?.credits || 0
   } catch (error) {
     console.error("Error getting user credits:", error)
@@ -437,57 +468,54 @@ export function getUserCredits(userId: number) {
   }
 }
 
-export function updateUserCredits(userId: number, amount: number, description: string, type: "add" | "subtract") {
+export async function updateUserCredits(userId: number, amount: number, description: string, type: "add" | "subtract") {
   try {
-    // Start a transaction
-    const transaction = db.transaction(() => {
-      // Update user credits
-      const updateStmt = db.prepare(
-        `UPDATE users
-         SET credits = credits ${type === "add" ? "+" : "-"} ?
-         WHERE id = ?
-         RETURNING credits`,
-      )
+    const db = await getDb()
 
-      const userResult = updateStmt.get(amount, userId) as any
+    // Update user credits
+    await db.run(
+      `UPDATE users
+       SET credits = credits ${type === "add" ? "+" : "-"} ?
+       WHERE id = ?`,
+      [amount, userId],
+    )
 
-      // Record the transaction
-      const transactionStmt = db.prepare(
-        `INSERT INTO credit_transactions (user_id, amount, description, transaction_type)
-         VALUES (?, ?, ?, ?)`,
-      )
+    // Record the transaction
+    await db.run(
+      `INSERT INTO credit_transactions (user_id, amount, description, transaction_type)
+       VALUES (?, ?, ?, ?)`,
+      [userId, amount, description, type],
+    )
 
-      transactionStmt.run(userId, amount, description, type)
+    const result = await db.get(
+      `SELECT credits
+       FROM users
+       WHERE id = ?`,
+      [userId],
+    )
 
-      return userResult?.credits || 0
-    })
-
-    return transaction()
+    return result?.credits || 0
   } catch (error) {
     console.error("Error updating user credits:", error)
     throw error
   }
 }
 
-export function logUsage(userId: number, actionType: string, documentId: string | null, creditsUsed: number) {
+export async function logUsage(userId: number, actionType: string, documentId: string | null, creditsUsed: number) {
   try {
-    // Start a transaction
-    const transaction = db.transaction(() => {
-      // Log usage
-      const logStmt = db.prepare(
-        `INSERT INTO usage_logs (user_id, action_type, document_id, credits_used)
-         VALUES (?, ?, ?, ?)`,
-      )
+    const db = await getDb()
 
-      logStmt.run(userId, actionType, documentId, creditsUsed)
+    // Log usage
+    await db.run(
+      `INSERT INTO usage_logs (user_id, action_type, document_id, credits_used)
+       VALUES (?, ?, ?, ?)`,
+      [userId, actionType, documentId, creditsUsed],
+    )
 
-      // Subtract credits from user if needed
-      if (creditsUsed > 0) {
-        updateUserCredits(userId, creditsUsed, `Used ${creditsUsed} credits for ${actionType}`, "subtract")
-      }
-    })
-
-    transaction()
+    // Subtract credits from user if needed
+    if (creditsUsed > 0) {
+      await updateUserCredits(userId, creditsUsed, `Used ${creditsUsed} credits for ${actionType}`, "subtract")
+    }
   } catch (error) {
     console.error("Error logging usage:", error)
     throw error
@@ -495,26 +523,26 @@ export function logUsage(userId: number, actionType: string, documentId: string 
 }
 
 // Admin functions
-export function getAllUsers(limit = 100, offset = 0) {
+export async function getAllUsers(limit = 100, offset = 0) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT id, email, full_name, avatar_url, credits, role, created_at, updated_at
        FROM users
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
+      [limit, offset],
     )
-
-    return stmt.all(limit, offset) as any[]
   } catch (error) {
     console.error("Error getting all users:", error)
     throw error
   }
 }
 
-export function getUserCount() {
+export async function getUserCount() {
   try {
-    const stmt = db.prepare(`SELECT COUNT(*) as count FROM users`)
-    const result = stmt.get() as any
+    const db = await getDb()
+    const result = await db.get(`SELECT COUNT(*) as count FROM users`)
     return result?.count || 0
   } catch (error) {
     console.error("Error getting user count:", error)
@@ -522,9 +550,10 @@ export function getUserCount() {
   }
 }
 
-export function getUsageStats(days = 30) {
+export async function getUsageStats(days = 30) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT 
          action_type, 
          COUNT(*) as count, 
@@ -533,18 +562,18 @@ export function getUsageStats(days = 30) {
        WHERE created_at > datetime('now', '-' || ? || ' days')
        GROUP BY action_type
        ORDER BY total_credits DESC`,
+      [days],
     )
-
-    return stmt.all(days) as any[]
   } catch (error) {
     console.error("Error getting usage stats:", error)
     throw error
   }
 }
 
-export function getUserUsageStats(userId: number, days = 30) {
+export async function getUserUsageStats(userId: number, days = 30) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT 
          action_type, 
          COUNT(*) as count, 
@@ -553,26 +582,25 @@ export function getUserUsageStats(userId: number, days = 30) {
        WHERE user_id = ? AND created_at > datetime('now', '-' || ? || ' days')
        GROUP BY action_type
        ORDER BY total_credits DESC`,
+      [userId, days],
     )
-
-    return stmt.all(userId, days) as any[]
   } catch (error) {
     console.error("Error getting user usage stats:", error)
     throw error
   }
 }
 
-export function getCreditTransactions(userId: number, limit = 20) {
+export async function getCreditTransactions(userId: number, limit = 20) {
   try {
-    const stmt = db.prepare(
+    const db = await getDb()
+    return await db.all(
       `SELECT id, amount, description, transaction_type, created_at
        FROM credit_transactions
        WHERE user_id = ?
        ORDER BY created_at DESC
        LIMIT ?`,
+      [userId, limit],
     )
-
-    return stmt.all(userId, limit) as any[]
   } catch (error) {
     console.error("Error getting credit transactions:", error)
     throw error
@@ -580,22 +608,23 @@ export function getCreditTransactions(userId: number, limit = 20) {
 }
 
 // Create admin user if it doesn't exist
-export function createAdminUser() {
+export async function createAdminUser() {
   try {
-    const existingAdmin = getUserByEmail("admin@example.com")
+    const db = await getDb()
+    const existingAdmin = await getUserByEmail("admin@example.com")
 
     if (!existingAdmin) {
       console.log("Creating admin user")
       const hashedPassword = "$2a$10$mLK.rrdlvx9DCFb6Eck1t.TlltnGulepXnov3bBp5T2TloO1MYj52" // admin123
 
-      const stmt = db.prepare(
+      await db.run(
         `INSERT INTO users (email, password_hash, full_name, credits, role)
-         VALUES (?, ?, ?, 1000, 'admin')
-         RETURNING id, email, full_name, credits, role`,
+         VALUES (?, ?, ?, 1000, 'admin')`,
+        ["admin@example.com", hashedPassword, "Admin User"],
       )
 
-      const result = stmt.get("admin@example.com", hashedPassword, "Admin User") as any
-      console.log("Admin user created:", result)
+      const admin = await getUserByEmail("admin@example.com")
+      console.log("Admin user created:", admin)
     } else {
       console.log("Admin user already exists")
     }
@@ -604,5 +633,16 @@ export function createAdminUser() {
   }
 }
 
-// Create admin user on initialization
-createAdminUser()
+// Initialize the database and create admin user
+export async function initDb() {
+  try {
+    await initializeDatabase()
+    await createAdminUser()
+    console.log("Database initialized successfully")
+  } catch (error) {
+    console.error("Error initializing database:", error)
+  }
+}
+
+// Initialize the database when this module is imported
+initDb()
